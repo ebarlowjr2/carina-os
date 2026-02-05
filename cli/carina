@@ -1,0 +1,303 @@
+#!/bin/bash
+#
+# CARINA CLI
+# Command-line interface for CARINA OS
+#
+
+set -e
+
+CARINA_VERSION="0.1"
+PROFILES_DIR="/opt/carina/profiles"
+CONFIG_DIR="/etc/carina"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+print_pass() {
+    echo -e "[${GREEN}PASS${NC}] $1"
+}
+
+print_warn() {
+    echo -e "[${YELLOW}WARN${NC}] $1"
+}
+
+print_fail() {
+    echo -e "[${RED}FAIL${NC}] $1"
+}
+
+cmd_version() {
+    echo "CARINA OS version $CARINA_VERSION"
+}
+
+cmd_doctor() {
+    echo "CARINA Doctor - System Health Check"
+    echo "===================================="
+    echo ""
+    
+    if [[ -f /etc/os-release ]]; then
+        source /etc/os-release
+        if [[ "$ID" == "carina" ]]; then
+            print_pass "OS: $PRETTY_NAME"
+        elif [[ "$ID" == "ubuntu" ]]; then
+            print_warn "OS: $PRETTY_NAME (not yet converted to CARINA)"
+        else
+            print_fail "OS: $PRETTY_NAME (unsupported)"
+        fi
+    else
+        print_fail "OS: Cannot determine"
+    fi
+    
+    local disk_usage
+    disk_usage=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
+    if [[ $disk_usage -lt 80 ]]; then
+        print_pass "Disk: ${disk_usage}% used"
+    elif [[ $disk_usage -lt 90 ]]; then
+        print_warn "Disk: ${disk_usage}% used"
+    else
+        print_fail "Disk: ${disk_usage}% used (critical)"
+    fi
+    
+    local mem_total mem_avail mem_percent
+    mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    mem_avail=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+    mem_percent=$((100 - (mem_avail * 100 / mem_total)))
+    if [[ $mem_percent -lt 80 ]]; then
+        print_pass "Memory: ${mem_percent}% used"
+    elif [[ $mem_percent -lt 90 ]]; then
+        print_warn "Memory: ${mem_percent}% used"
+    else
+        print_fail "Memory: ${mem_percent}% used (critical)"
+    fi
+    
+    if ping -c 1 -W 2 8.8.8.8 &>/dev/null; then
+        print_pass "Network: Connected"
+    else
+        print_fail "Network: No connectivity"
+    fi
+    
+    if systemctl is-system-running &>/dev/null; then
+        local state
+        state=$(systemctl is-system-running 2>/dev/null || echo "unknown")
+        if [[ "$state" == "running" ]] || [[ "$state" == "degraded" ]]; then
+            print_pass "Systemd: $state"
+        else
+            print_warn "Systemd: $state"
+        fi
+    else
+        print_fail "Systemd: Not available"
+    fi
+    
+    if command -v docker &>/dev/null; then
+        if docker info &>/dev/null; then
+            print_pass "Container Runtime: Docker available"
+        else
+            print_warn "Container Runtime: Docker installed but not running"
+        fi
+    elif command -v podman &>/dev/null; then
+        print_pass "Container Runtime: Podman available"
+    else
+        print_warn "Container Runtime: Not installed (stub)"
+    fi
+    
+    echo ""
+    echo "Doctor check complete."
+}
+
+cmd_profile_list() {
+    echo "Available Profiles"
+    echo "=================="
+    echo ""
+    
+    if [[ ! -d "$PROFILES_DIR" ]]; then
+        echo "No profiles directory found at $PROFILES_DIR"
+        echo "Run bootstrap script first."
+        return 1
+    fi
+    
+    for profile in "$PROFILES_DIR"/*/; do
+        if [[ -d "$profile" ]]; then
+            local name
+            name=$(basename "$profile")
+            local desc=""
+            case "$name" in
+                core)
+                    desc="Minimal server profile with essential tools"
+                    ;;
+                flightdeck)
+                    desc="GUI-enabled profile with desktop environment"
+                    ;;
+                *)
+                    desc="Custom profile"
+                    ;;
+            esac
+            echo "  $name - $desc"
+        fi
+    done
+}
+
+cmd_profile_apply() {
+    local profile_name="$1"
+    
+    if [[ -z "$profile_name" ]]; then
+        echo "Usage: carina profile apply <name>"
+        echo ""
+        echo "Available profiles:"
+        cmd_profile_list
+        return 1
+    fi
+    
+    local profile_dir="$PROFILES_DIR/$profile_name"
+    
+    if [[ ! -d "$profile_dir" ]]; then
+        echo "Profile '$profile_name' not found"
+        return 1
+    fi
+    
+    echo "Applying profile: $profile_name"
+    echo "================================"
+    
+    if [[ -f "$profile_dir/packages.txt" ]]; then
+        echo "Installing packages..."
+        apt-get update -qq
+        while IFS= read -r package || [[ -n "$package" ]]; do
+            package=$(echo "$package" | tr -d '[:space:]')
+            if [[ -n "$package" ]] && [[ ! "$package" =~ ^# ]]; then
+                echo "  Installing: $package"
+                apt-get install -y -qq "$package" || echo "  Warning: Failed to install $package"
+            fi
+        done < "$profile_dir/packages.txt"
+        echo "Packages installed."
+    fi
+    
+    if [[ -f "$profile_dir/config.sh" ]]; then
+        echo "Running configuration..."
+        bash "$profile_dir/config.sh"
+        echo "Configuration complete."
+    fi
+    
+    echo ""
+    echo "Profile '$profile_name' applied successfully."
+}
+
+cmd_gui_enable() {
+    echo "Enabling GUI..."
+    
+    if [[ $EUID -ne 0 ]]; then
+        echo "This command requires root privileges (use sudo)"
+        return 1
+    fi
+    
+    if [[ -d "$PROFILES_DIR/flightdeck" ]]; then
+        cmd_profile_apply flightdeck
+    else
+        echo "Installing GUI packages..."
+        apt-get update -qq
+        apt-get install -y -qq ubuntu-desktop-minimal gdm3 xrdp
+    fi
+    
+    echo "Setting graphical target..."
+    systemctl set-default graphical.target
+    
+    echo "Enabling display manager..."
+    systemctl enable gdm3 2>/dev/null || true
+    
+    echo ""
+    echo "GUI enabled. Reboot to start graphical interface."
+    echo "Run: sudo reboot"
+}
+
+cmd_gui_disable() {
+    echo "Disabling GUI..."
+    
+    if [[ $EUID -ne 0 ]]; then
+        echo "This command requires root privileges (use sudo)"
+        return 1
+    fi
+    
+    echo "Setting multi-user target..."
+    systemctl set-default multi-user.target
+    
+    echo "Stopping display manager..."
+    systemctl stop gdm3 2>/dev/null || true
+    systemctl disable gdm3 2>/dev/null || true
+    
+    echo ""
+    echo "GUI disabled. Reboot to apply changes."
+    echo "Run: sudo reboot"
+}
+
+cmd_help() {
+    echo "CARINA CLI - Version $CARINA_VERSION"
+    echo ""
+    echo "Usage: carina <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  doctor              Check system health"
+    echo "  profile list        List available profiles"
+    echo "  profile apply <n>   Apply a profile"
+    echo "  gui enable          Enable graphical interface"
+    echo "  gui disable         Disable graphical interface"
+    echo "  version             Show version"
+    echo "  help                Show this help"
+    echo ""
+}
+
+main() {
+    local cmd="${1:-help}"
+    shift || true
+    
+    case "$cmd" in
+        doctor)
+            cmd_doctor
+            ;;
+        profile)
+            local subcmd="${1:-list}"
+            shift || true
+            case "$subcmd" in
+                list)
+                    cmd_profile_list
+                    ;;
+                apply)
+                    cmd_profile_apply "$@"
+                    ;;
+                *)
+                    echo "Unknown profile command: $subcmd"
+                    echo "Usage: carina profile [list|apply <name>]"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        gui)
+            local subcmd="${1:-}"
+            shift || true
+            case "$subcmd" in
+                enable)
+                    cmd_gui_enable
+                    ;;
+                disable)
+                    cmd_gui_disable
+                    ;;
+                *)
+                    echo "Unknown gui command: $subcmd"
+                    echo "Usage: carina gui [enable|disable]"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        version)
+            cmd_version
+            ;;
+        help|--help|-h)
+            cmd_help
+            ;;
+        *)
+            echo "Unknown command: $cmd"
+            cmd_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

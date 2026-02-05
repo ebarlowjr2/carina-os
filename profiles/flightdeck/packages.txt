@@ -1,0 +1,3 @@
+ubuntu-desktop-minimal
+gdm3
+xrdp

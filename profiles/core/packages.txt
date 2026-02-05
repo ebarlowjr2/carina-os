@@ -1,0 +1,12 @@
+git
+curl
+wget
+vim
+tmux
+htop
+jq
+openssh-server
+chrony
+ufw
+rsyslog
+logrotate

@@ -1,0 +1,17 @@
+[Unit]
+Description=CARINA OS First Boot Configuration
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/etc/carina/firstboot.done
+
+[Service]
+Type=oneshot
+ExecStart=/opt/carina/firstboot.sh
+ExecStartPost=/bin/touch /etc/carina/firstboot.done
+ExecStartPost=/bin/systemctl disable carina-firstboot.service
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

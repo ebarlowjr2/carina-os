@@ -1,0 +1,9 @@
+NAME="CARINA OS"
+PRETTY_NAME="CARINA OS (Core)"
+ID=carina
+ID_LIKE=debian
+VERSION_ID="0.1"
+VERSION="0.1 (Core)"
+HOME_URL="https://carinaos.org"
+SUPPORT_URL="https://carinaos.org/support"
+BUG_REPORT_URL="https://carinaos.org/bugs"
