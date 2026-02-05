@@ -1,0 +1,23 @@
+# CARINA Sandbox - Node.js Template
+# Purpose: Tooling and UI experiments
+# Security: Runs unprivileged, no host access
+
+FROM node:lts-slim
+
+LABEL org.carina.template="node"
+LABEL org.carina.version="0.1"
+LABEL org.carina.description="Node.js sandbox for tooling and UI experiments"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+RUN useradd -m -s /bin/bash sandbox
+USER sandbox
+WORKDIR /home/sandbox
+
+ENV PATH="/home/sandbox/.npm-global/bin:${PATH}"
+ENV NPM_CONFIG_PREFIX="/home/sandbox/.npm-global"
+
+CMD ["node"]
