@@ -9,7 +9,7 @@
 set -e
 
 LOGFILE="/var/log/carina-bootstrap.log"
-CARINA_VERSION="0.2"
+CARINA_VERSION="0.3"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
@@ -129,6 +129,37 @@ install_cli() {
         cp "$REPO_DIR/sandbox/cleanup.sh" /opt/carina/sandbox/cleanup.sh
         chmod +x /opt/carina/sandbox/cleanup.sh
     fi
+    
+    # Install MissionLab files
+    mkdir -p /opt/carina/missionlab/profiles
+    mkdir -p /opt/carina/missionlab/udev
+    
+    if [[ -d "$REPO_DIR/missionlab/profiles" ]]; then
+        cp -r "$REPO_DIR/missionlab/profiles/"* /opt/carina/missionlab/profiles/
+        # Make config scripts executable
+        chmod +x /opt/carina/missionlab/profiles/*/config.sh 2>/dev/null || true
+        log "MissionLab profiles installed"
+    fi
+    
+    if [[ -d "$REPO_DIR/missionlab/udev" ]]; then
+        cp -r "$REPO_DIR/missionlab/udev/"* /opt/carina/missionlab/udev/
+        log "MissionLab udev rules staged"
+    fi
+    
+    if [[ -f "$REPO_DIR/missionlab/device-detect.sh" ]]; then
+        cp "$REPO_DIR/missionlab/device-detect.sh" /opt/carina/missionlab/device-detect.sh
+        chmod +x /opt/carina/missionlab/device-detect.sh
+        log "MissionLab device-detect installed"
+    fi
+    
+    # Link MissionLab profiles to main profiles directory
+    if [[ -d /opt/carina/missionlab/profiles/embedded ]]; then
+        ln -sf /opt/carina/missionlab/profiles/embedded /opt/carina/profiles/missionlab-embedded
+    fi
+    if [[ -d /opt/carina/missionlab/profiles/robotics ]]; then
+        ln -sf /opt/carina/missionlab/profiles/robotics /opt/carina/profiles/missionlab-robotics
+    fi
+    log "MissionLab profiles linked"
     
     # Create carina group for sandbox state/log access
     if ! getent group carina >/dev/null 2>&1; then

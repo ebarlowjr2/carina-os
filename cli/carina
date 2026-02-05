@@ -6,10 +6,11 @@
 
 set -e
 
-CARINA_VERSION="0.2"
+CARINA_VERSION="0.3"
 PROFILES_DIR="/opt/carina/profiles"
 CONFIG_DIR="/etc/carina"
 SANDBOX_DIR="/opt/carina/sandbox"
+MISSIONLAB_DIR="/opt/carina/missionlab"
 
 # CARINA Color Palette (from branding/colors.md)
 # No pure black. No pure white. Everything lives in "space light" range.
@@ -132,6 +133,12 @@ cmd_profile_list() {
                     ;;
                 flightdeck)
                     desc="GUI-enabled profile with desktop environment"
+                    ;;
+                missionlab-embedded)
+                    desc="Embedded development toolchain (Arduino, PlatformIO)"
+                    ;;
+                missionlab-robotics)
+                    desc="Robotics development tools (ROS2 tooling)"
                     ;;
                 *)
                     desc="Custom profile"
@@ -619,6 +626,157 @@ cmd_sandbox_help() {
 }
 
 # ============================================================================
+# MISSIONLAB COMMANDS
+# ============================================================================
+
+MISSIONLAB_PROFILES_DIR="$MISSIONLAB_DIR/profiles"
+
+cmd_missionlab_status() {
+    echo -e "${CARINA_CYAN}CARINA MissionLab Status${NC}"
+    echo -e "${CARINA_MUTED}========================${NC}"
+    echo ""
+    
+    local user="${SUDO_USER:-$USER}"
+    
+    # Check toolchain availability
+    echo -e "${CARINA_TEXT}Toolchain:${NC}"
+    
+    if command -v arduino-cli &>/dev/null; then
+        local version=$(arduino-cli version 2>/dev/null | head -1 || echo "unknown")
+        print_pass "arduino-cli: $version"
+    else
+        print_warn "arduino-cli: Not installed"
+    fi
+    
+    if command -v platformio &>/dev/null || python3 -c "import platformio" 2>/dev/null; then
+        print_pass "PlatformIO: Available"
+    else
+        print_warn "PlatformIO: Not installed"
+    fi
+    
+    if command -v avrdude &>/dev/null; then
+        print_pass "avrdude: Available"
+    else
+        print_warn "avrdude: Not installed"
+    fi
+    
+    if command -v openocd &>/dev/null; then
+        print_pass "OpenOCD: Available"
+    else
+        print_warn "OpenOCD: Not installed"
+    fi
+    
+    if command -v minicom &>/dev/null; then
+        print_pass "minicom: Available"
+    else
+        print_warn "minicom: Not installed"
+    fi
+    
+    echo ""
+    echo -e "${CARINA_TEXT}User Groups:${NC}"
+    
+    if groups "$user" 2>/dev/null | grep -q '\bdialout\b'; then
+        print_pass "$user is in dialout group (serial access)"
+    else
+        print_fail "$user is NOT in dialout group"
+        echo "      Run: sudo usermod -aG dialout $user"
+    fi
+    
+    if groups "$user" 2>/dev/null | grep -q '\bplugdev\b'; then
+        print_pass "$user is in plugdev group (USB access)"
+    else
+        print_fail "$user is NOT in plugdev group"
+        echo "      Run: sudo usermod -aG plugdev $user"
+    fi
+    
+    echo ""
+    echo -e "${CARINA_TEXT}Serial Access:${NC}"
+    
+    local serial_ok=1
+    for port in /dev/ttyUSB* /dev/ttyACM*; do
+        if [[ -e "$port" ]]; then
+            if [[ -r "$port" ]] && [[ -w "$port" ]]; then
+                print_pass "$port: Accessible"
+            else
+                print_fail "$port: Permission denied"
+                serial_ok=0
+            fi
+        fi
+    done
+    
+    if [[ $serial_ok -eq 1 ]]; then
+        local count=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | wc -l)
+        if [[ $count -eq 0 ]]; then
+            echo -e "  ${CARINA_MUTED}No serial devices currently connected${NC}"
+        fi
+    fi
+    
+    echo ""
+    echo -e "${CARINA_TEXT}udev Rules:${NC}"
+    
+    if [[ -f /etc/udev/rules.d/99-carina-serial.rules ]]; then
+        print_pass "Serial rules installed"
+    else
+        print_warn "Serial rules not installed"
+    fi
+    
+    if [[ -f /etc/udev/rules.d/99-carina-usb.rules ]]; then
+        print_pass "USB rules installed"
+    else
+        print_warn "USB rules not installed"
+    fi
+    
+    echo ""
+}
+
+cmd_missionlab_devices() {
+    local device_detect="$MISSIONLAB_DIR/device-detect.sh"
+    
+    if [[ -x "$device_detect" ]]; then
+        bash "$device_detect"
+    else
+        echo -e "${CARINA_CYAN}CARINA MissionLab - Device Detection${NC}"
+        echo -e "${CARINA_MUTED}=====================================${NC}"
+        echo ""
+        
+        echo -e "${CARINA_TEXT}Serial Ports:${NC}"
+        local found=0
+        for port in /dev/ttyUSB* /dev/ttyACM*; do
+            if [[ -e "$port" ]]; then
+                found=1
+                echo -e "  ${CARINA_CYAN}$port${NC}"
+            fi
+        done
+        if [[ $found -eq 0 ]]; then
+            echo -e "  ${CARINA_MUTED}No serial ports detected${NC}"
+        fi
+        
+        echo ""
+        echo -e "${CARINA_TEXT}USB Devices:${NC}"
+        if command -v lsusb &>/dev/null; then
+            lsusb 2>/dev/null | head -10
+        else
+            echo -e "  ${CARINA_MUTED}lsusb not available${NC}"
+        fi
+    fi
+}
+
+cmd_missionlab_help() {
+    echo -e "${CARINA_CYAN}CARINA MissionLab${NC} - Embedded & Robotics Development"
+    echo ""
+    echo -e "${CARINA_TEXT}Usage:${NC} carina missionlab <command>"
+    echo ""
+    echo -e "${CARINA_TEXT}Commands:${NC}"
+    echo -e "  ${CARINA_CYAN}status${NC}              Check toolchain and device access"
+    echo -e "  ${CARINA_CYAN}devices${NC}             Detect connected devices"
+    echo ""
+    echo -e "${CARINA_TEXT}Profiles:${NC}"
+    echo "  carina profile apply missionlab-embedded"
+    echo "  carina profile apply missionlab-robotics"
+    echo ""
+}
+
+# ============================================================================
 # HELP
 # ============================================================================
 
@@ -632,6 +790,7 @@ cmd_help() {
     echo -e "  ${CARINA_CYAN}profile${NC} <cmd>       Manage system profiles"
     echo -e "  ${CARINA_CYAN}gui${NC} <cmd>           Enable/disable graphical interface"
     echo -e "  ${CARINA_CYAN}sandbox${NC} <cmd>       Manage sandbox environments"
+    echo -e "  ${CARINA_CYAN}missionlab${NC} <cmd>    Embedded & robotics development"
     echo -e "  ${CARINA_CYAN}version${NC}             Show version"
     echo -e "  ${CARINA_CYAN}help${NC}                Show this help"
     echo ""
@@ -650,6 +809,10 @@ cmd_help() {
     echo "  sandbox exec <id>   Execute in sandbox"
     echo "  sandbox down <id>   Stop sandbox"
     echo "  sandbox cleanup     Remove expired sandboxes"
+    echo ""
+    echo -e "${CARINA_TEXT}MissionLab commands:${NC}"
+    echo "  missionlab status   Check toolchain and access"
+    echo "  missionlab devices  Detect connected devices"
     echo ""
 }
 
@@ -723,6 +886,26 @@ main() {
                 *)
                     echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown sandbox command: $subcmd"
                     cmd_sandbox_help
+                    exit 1
+                    ;;
+            esac
+            ;;
+        missionlab)
+            local subcmd="${1:-help}"
+            shift || true
+            case "$subcmd" in
+                status)
+                    cmd_missionlab_status
+                    ;;
+                devices)
+                    cmd_missionlab_devices
+                    ;;
+                help|--help|-h)
+                    cmd_missionlab_help
+                    ;;
+                *)
+                    echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown missionlab command: $subcmd"
+                    cmd_missionlab_help
                     exit 1
                     ;;
             esac

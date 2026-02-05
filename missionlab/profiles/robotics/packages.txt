@@ -1,0 +1,32 @@
+# CARINA MissionLab - Robotics Profile
+# Minimal tooling for ROS2 development (not full desktop)
+
+# ROS2 development tools
+ros-dev-tools
+
+# Build tools
+colcon-common-extensions
+python3-colcon-common-extensions
+
+# ROS2 utilities
+python3-rosdep
+python3-vcstool
+python3-rosinstall-generator
+
+# Build essentials
+build-essential
+cmake
+ninja-build
+
+# Python tools
+python3-pip
+python3-venv
+python3-numpy
+
+# Serial and device access (shared with embedded)
+python3-serial
+usbutils
+
+# Networking tools for ROS
+net-tools
+iproute2

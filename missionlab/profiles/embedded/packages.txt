@@ -1,0 +1,34 @@
+# CARINA MissionLab - Embedded Profile
+# CLI-first toolchain for microcontrollers and embedded development
+
+# Arduino tooling
+arduino-cli
+
+# PlatformIO (installed via pip, not apt - see config.sh)
+# platformio
+
+# Serial terminal tools
+minicom
+screen
+picocom
+
+# Programmers and flashers
+avrdude
+dfu-util
+openocd
+
+# USB utilities
+usbutils
+
+# Serial port utilities
+setserial
+
+# Build essentials for embedded
+build-essential
+cmake
+ninja-build
+
+# Python for scripting and tools
+python3-pip
+python3-venv
+python3-serial
