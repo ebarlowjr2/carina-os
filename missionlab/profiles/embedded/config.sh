@@ -22,10 +22,15 @@ usermod -aG dialout "$ACTUAL_USER"
 log "Adding $ACTUAL_USER to plugdev group (USB device access)"
 usermod -aG plugdev "$ACTUAL_USER"
 
-# Install PlatformIO via pip (not available in apt)
+# Install PlatformIO via pipx (recommended for modern Ubuntu with PEP 668)
 log "Installing PlatformIO Core CLI"
-if command -v pip3 &>/dev/null; then
-    pip3 install --user platformio || log "Warning: PlatformIO installation failed (may need manual install)"
+if command -v pipx &>/dev/null; then
+    sudo -u "$ACTUAL_USER" pipx install platformio 2>/dev/null || log "Warning: PlatformIO installation via pipx failed"
+elif command -v pip3 &>/dev/null; then
+    # Fallback: try pip with --break-system-packages for older systems
+    pip3 install --user platformio 2>/dev/null || \
+    pip3 install --user --break-system-packages platformio 2>/dev/null || \
+    log "Warning: PlatformIO installation failed (install manually: pipx install platformio)"
 fi
 
 # Initialize arduino-cli if available
