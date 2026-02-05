@@ -1,0 +1,45 @@
+# CARINA MissionLab - Serial Device Rules
+# Provides non-root access to common serial devices
+#
+# These rules ensure USB-to-serial adapters and microcontroller boards
+# are accessible without sudo for users in the dialout group.
+
+# FTDI USB-to-Serial adapters (FT232, FT2232, etc.)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", GROUP="dialout", MODE="0666"
+
+# Silicon Labs CP210x USB-to-Serial
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", GROUP="dialout", MODE="0666"
+
+# Prolific PL2303 USB-to-Serial
+SUBSYSTEM=="tty", ATTRS{idVendor}=="067b", GROUP="dialout", MODE="0666"
+
+# WCH CH340/CH341 USB-to-Serial (common on cheap Arduino clones)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", GROUP="dialout", MODE="0666"
+
+# Arduino boards (various)
+# Arduino Uno, Mega, etc. (ATmega16U2/ATmega8U2)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", GROUP="dialout", MODE="0666"
+# Arduino LLC boards
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2a03", GROUP="dialout", MODE="0666"
+
+# Espressif ESP32/ESP8266
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", GROUP="dialout", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", GROUP="dialout", MODE="0666"
+
+# STMicroelectronics STM32 (ST-Link, Nucleo boards)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0483", GROUP="dialout", MODE="0666"
+
+# Raspberry Pi Pico (RP2040)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", GROUP="dialout", MODE="0666"
+
+# Teensy boards
+SUBSYSTEM=="tty", ATTRS{idVendor}=="16c0", GROUP="dialout", MODE="0666"
+
+# Generic USB CDC ACM devices (catches most Arduino-compatible boards)
+SUBSYSTEM=="tty", KERNEL=="ttyACM[0-9]*", GROUP="dialout", MODE="0666"
+
+# Generic USB serial devices
+SUBSYSTEM=="tty", KERNEL=="ttyUSB[0-9]*", GROUP="dialout", MODE="0666"
+
+# Tag CARINA-managed serial devices
+SUBSYSTEM=="tty", ATTRS{idVendor}=="*", TAG+="carina-serial"
