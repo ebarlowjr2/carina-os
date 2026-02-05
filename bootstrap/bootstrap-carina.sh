@@ -124,7 +124,7 @@ setup_firstboot() {
     log "Setting up first-boot system..."
     
     if [[ -f "$REPO_DIR/system/firstboot.service" ]]; then
-        cp "$REPO_DIR/system/firstboot.service" /etc/systemd/system/
+        cp "$REPO_DIR/system/firstboot.service" /etc/systemd/system/carina-firstboot.service
         log "Firstboot service installed"
     fi
     
