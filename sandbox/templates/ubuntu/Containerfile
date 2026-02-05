@@ -1,0 +1,23 @@
+# CARINA Sandbox - Ubuntu Base Template
+# Purpose: Generic testing and experimentation
+# Security: Runs unprivileged, no host access
+
+FROM ubuntu:24.04
+
+LABEL org.carina.template="ubuntu"
+LABEL org.carina.version="0.1"
+LABEL org.carina.description="Base Ubuntu sandbox for generic testing"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    coreutils \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+RUN useradd -m -s /bin/bash sandbox
+USER sandbox
+WORKDIR /home/sandbox
+
+CMD ["/bin/bash"]

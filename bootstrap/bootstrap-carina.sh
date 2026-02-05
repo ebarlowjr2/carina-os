@@ -9,7 +9,7 @@
 set -e
 
 LOGFILE="/var/log/carina-bootstrap.log"
-CARINA_VERSION="0.1"
+CARINA_VERSION="0.2"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
@@ -75,8 +75,26 @@ install_base_packages() {
         gnupg \
         openssh-server \
         chrony \
-        ufw
+        ufw \
+        xxd
     log "Base packages installed"
+}
+
+install_podman() {
+    log "Installing Podman for sandbox support..."
+    
+    if command -v podman &>/dev/null; then
+        log "Podman already installed: $(podman --version)"
+        return 0
+    fi
+    
+    apt-get install -y -qq podman
+    
+    if command -v podman &>/dev/null; then
+        log "Podman installed: $(podman --version)"
+    else
+        log "WARN: Podman installation may have failed"
+    fi
 }
 
 install_cli() {
@@ -95,6 +113,67 @@ install_cli() {
         cp -r "$REPO_DIR/profiles/"* /opt/carina/profiles/
         log "Profiles installed"
     fi
+    
+    mkdir -p /opt/carina/sandbox/templates
+    if [[ -d "$REPO_DIR/sandbox/templates" ]]; then
+        cp -r "$REPO_DIR/sandbox/templates/"* /opt/carina/sandbox/templates/
+        log "Sandbox templates installed"
+    fi
+    
+    if [[ -f "$REPO_DIR/sandbox/sandbox.sh" ]]; then
+        cp "$REPO_DIR/sandbox/sandbox.sh" /opt/carina/sandbox/sandbox.sh
+        chmod +x /opt/carina/sandbox/sandbox.sh
+    fi
+    
+    if [[ -f "$REPO_DIR/sandbox/cleanup.sh" ]]; then
+        cp "$REPO_DIR/sandbox/cleanup.sh" /opt/carina/sandbox/cleanup.sh
+        chmod +x /opt/carina/sandbox/cleanup.sh
+    fi
+    
+    # Create carina group for sandbox state/log access
+    if ! getent group carina >/dev/null 2>&1; then
+        groupadd carina
+        log "Created carina group"
+    fi
+    
+    # Add current sudo user to carina group if running via sudo
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        usermod -aG carina "$SUDO_USER"
+        log "Added $SUDO_USER to carina group"
+    fi
+    
+    # Setup state directory with proper group permissions
+    mkdir -p /var/lib/carina
+    chown root:carina /var/lib/carina
+    chmod 2775 /var/lib/carina  # setgid keeps group sticky
+    if [[ ! -f /var/lib/carina/sandboxes.json ]]; then
+        echo '{"sandboxes":[]}' > /var/lib/carina/sandboxes.json
+    fi
+    chown root:carina /var/lib/carina/sandboxes.json
+    chmod 664 /var/lib/carina/sandboxes.json
+    
+    # Setup log directory with proper group permissions
+    mkdir -p /var/log/carina
+    chown root:carina /var/log/carina
+    chmod 2775 /var/log/carina
+    touch /var/log/carina/sandbox.log
+    chown root:carina /var/log/carina/sandbox.log
+    chmod 664 /var/log/carina/sandbox.log
+    
+    # Setup logrotate for sandbox logs
+    cat > /etc/logrotate.d/carina-sandbox << 'LOGROTATE'
+/var/log/carina/sandbox.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+    create 664 root carina
+}
+LOGROTATE
+    log "Logrotate configured for sandbox logs"
+    
+    log "Sandbox support installed"
 }
 
 apply_identity() {
@@ -168,6 +247,7 @@ main() {
     check_ubuntu
     create_directories
     install_base_packages
+    install_podman
     install_cli
     apply_identity
     setup_firstboot
