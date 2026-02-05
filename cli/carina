@@ -239,7 +239,7 @@ cmd_gui_disable() {
 
 SANDBOX_TEMPLATES_DIR="$SANDBOX_DIR/templates"
 SANDBOX_STATE_FILE="/var/lib/carina/sandboxes.json"
-SANDBOX_LOG_FILE="/var/log/carina-sandbox.log"
+SANDBOX_LOG_FILE="/var/log/carina/sandbox.log"
 SANDBOX_IMAGE_PREFIX="carina-sandbox"
 
 sandbox_log_action() {
@@ -254,7 +254,7 @@ sandbox_log_action() {
 
 sandbox_ensure_dirs() {
     mkdir -p /var/lib/carina 2>/dev/null || true
-    mkdir -p /var/log 2>/dev/null || true
+    mkdir -p /var/log/carina 2>/dev/null || true
     touch "$SANDBOX_LOG_FILE" 2>/dev/null || true
     if [[ ! -f "$SANDBOX_STATE_FILE" ]]; then
         echo '{"sandboxes":[]}' > "$SANDBOX_STATE_FILE" 2>/dev/null || true
@@ -549,6 +549,7 @@ cmd_sandbox_cleanup() {
     local current_time
     current_time=$(date +%s)
     
+    # Remove expired sandboxes (TTL exceeded)
     if [[ -f "$SANDBOX_STATE_FILE" ]]; then
         jq -r '.sandboxes[] | "\(.id)|\(.expire_time)"' "$SANDBOX_STATE_FILE" 2>/dev/null | while IFS='|' read -r id expire_time; do
             if [[ $current_time -ge $expire_time ]]; then
@@ -566,15 +567,28 @@ cmd_sandbox_cleanup() {
     local orphans
     orphans=$(podman ps -a --filter "name=${SANDBOX_IMAGE_PREFIX}" --format "{{.Names}}" 2>/dev/null || true)
     
+    # Remove containers that exist but aren't in state file
     for container in $orphans; do
         if [[ -f "$SANDBOX_STATE_FILE" ]]; then
             if ! jq -e --arg id "$container" '.sandboxes[] | select(.id == $id)' "$SANDBOX_STATE_FILE" >/dev/null 2>&1; then
-                echo -e "Removing orphan: ${CARINA_MAGENTA}$container${NC}"
-                sandbox_log_action "CLEANUP" "id=$container reason=orphan"
+                echo -e "Removing orphan container: ${CARINA_MAGENTA}$container${NC}"
+                sandbox_log_action "CLEANUP" "id=$container reason=orphan_container"
                 podman rm -f "$container" >/dev/null 2>&1 || true
             fi
         fi
     done
+    
+    # Remove state entries where container no longer exists
+    echo "Checking for orphaned state entries..."
+    if [[ -f "$SANDBOX_STATE_FILE" ]]; then
+        jq -r '.sandboxes[].id' "$SANDBOX_STATE_FILE" 2>/dev/null | while read -r id; do
+            if ! podman container exists "$id" 2>/dev/null; then
+                echo -e "Removing orphan state: ${CARINA_MAGENTA}$id${NC}"
+                sandbox_log_action "CLEANUP" "id=$id reason=orphan_state"
+                sandbox_remove_state "$id"
+            fi
+        done
+    fi
     
     echo ""
     echo -e "${CARINA_CYAN}Cleanup complete${NC}"

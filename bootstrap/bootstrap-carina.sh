@@ -130,15 +130,49 @@ install_cli() {
         chmod +x /opt/carina/sandbox/cleanup.sh
     fi
     
+    # Create carina group for sandbox state/log access
+    if ! getent group carina >/dev/null 2>&1; then
+        groupadd carina
+        log "Created carina group"
+    fi
+    
+    # Add current sudo user to carina group if running via sudo
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        usermod -aG carina "$SUDO_USER"
+        log "Added $SUDO_USER to carina group"
+    fi
+    
+    # Setup state directory with proper group permissions
     mkdir -p /var/lib/carina
-    chmod 777 /var/lib/carina
+    chown root:carina /var/lib/carina
+    chmod 2775 /var/lib/carina  # setgid keeps group sticky
     if [[ ! -f /var/lib/carina/sandboxes.json ]]; then
         echo '{"sandboxes":[]}' > /var/lib/carina/sandboxes.json
     fi
-    chmod 666 /var/lib/carina/sandboxes.json
+    chown root:carina /var/lib/carina/sandboxes.json
+    chmod 664 /var/lib/carina/sandboxes.json
     
-    touch /var/log/carina-sandbox.log
-    chmod 666 /var/log/carina-sandbox.log
+    # Setup log directory with proper group permissions
+    mkdir -p /var/log/carina
+    chown root:carina /var/log/carina
+    chmod 2775 /var/log/carina
+    touch /var/log/carina/sandbox.log
+    chown root:carina /var/log/carina/sandbox.log
+    chmod 664 /var/log/carina/sandbox.log
+    
+    # Setup logrotate for sandbox logs
+    cat > /etc/logrotate.d/carina-sandbox << 'LOGROTATE'
+/var/log/carina/sandbox.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+    create 664 root carina
+}
+LOGROTATE
+    log "Logrotate configured for sandbox logs"
+    
     log "Sandbox support installed"
 }
 

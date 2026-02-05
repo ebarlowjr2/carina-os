@@ -141,7 +141,7 @@ Sandbox state is tracked in `/var/lib/carina/sandboxes.json`.
 
 ## Logging
 
-All sandbox actions are logged to `/var/log/carina-sandbox.log`:
+All sandbox actions are logged to `/var/log/carina/sandbox.log`:
 
 - Who started the sandbox
 - Template used
