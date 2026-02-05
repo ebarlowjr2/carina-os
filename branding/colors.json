@@ -1,0 +1,86 @@
+{
+  "name": "CARINA OS Color System",
+  "version": "0.1",
+  "colors": {
+    "background": {
+      "void": {
+        "name": "Carina Void",
+        "hex": "#050814",
+        "rgb": [5, 8, 20],
+        "usage": "Primary background, deep space"
+      },
+      "abyss": {
+        "name": "Carina Abyss",
+        "hex": "#0A0F2A",
+        "rgb": [10, 15, 42],
+        "usage": "Panels, windows, secondary background"
+      }
+    },
+    "primary": {
+      "indigo": {
+        "name": "Carina Indigo",
+        "hex": "#2B2F77",
+        "rgb": [43, 47, 119],
+        "usage": "Structure, depth"
+      },
+      "electricBlue": {
+        "name": "Carina Electric Blue",
+        "hex": "#1FA2FF",
+        "rgb": [31, 162, 255],
+        "usage": "Navigation, calm actions"
+      }
+    },
+    "accent": {
+      "magenta": {
+        "name": "Carina Magenta",
+        "hex": "#B14CFF",
+        "rgb": [177, 76, 255],
+        "usage": "Energy, alerts, AI indicators"
+      },
+      "cyan": {
+        "name": "Carina Cyan",
+        "hex": "#3DE8FF",
+        "rgb": [61, 232, 255],
+        "usage": "Action, active states"
+      }
+    },
+    "utility": {
+      "textPrimary": {
+        "name": "Carina Text Primary",
+        "hex": "#E6ECFF",
+        "rgb": [230, 236, 255],
+        "usage": "Primary text"
+      },
+      "textMuted": {
+        "name": "Carina Text Muted",
+        "hex": "#9AA3C7",
+        "rgb": [154, 163, 199],
+        "usage": "Secondary text, hints"
+      },
+      "divider": {
+        "name": "Carina Divider",
+        "hex": "#1C2340",
+        "rgb": [28, 35, 64],
+        "usage": "Borders, separators"
+      }
+    }
+  },
+  "semantic": {
+    "action": "#3DE8FF",
+    "alert": "#B14CFF",
+    "navigation": "#1FA2FF",
+    "structure": "#2B2F77",
+    "error": "#B14CFF",
+    "success": "#3DE8FF",
+    "warning": "#1FA2FF"
+  },
+  "terminal": {
+    "background": "#050814",
+    "foreground": "#E6ECFF",
+    "promptAccent": "#3DE8FF",
+    "error": "#B14CFF",
+    "success": "#3DE8FF",
+    "warning": "#1FA2FF",
+    "muted": "#9AA3C7"
+  }
+}
