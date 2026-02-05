@@ -6,34 +6,39 @@
 
 set -e
 
-CARINA_VERSION="0.1"
+CARINA_VERSION="0.2"
 PROFILES_DIR="/opt/carina/profiles"
 CONFIG_DIR="/etc/carina"
+SANDBOX_DIR="/opt/carina/sandbox"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
+# CARINA Color Palette (from branding/colors.md)
+# No pure black. No pure white. Everything lives in "space light" range.
+CARINA_CYAN='\033[38;2;61;232;255m'      # #3DE8FF - action/active/success
+CARINA_MAGENTA='\033[38;2;177;76;255m'   # #B14CFF - energy/alert/error
+CARINA_BLUE='\033[38;2;31;162;255m'      # #1FA2FF - navigation/warning
+CARINA_TEXT='\033[38;2;230;236;255m'     # #E6ECFF - primary text
+CARINA_MUTED='\033[38;2;154;163;199m'    # #9AA3C7 - muted text
 NC='\033[0m'
 
 print_pass() {
-    echo -e "[${GREEN}PASS${NC}] $1"
+    echo -e "[${CARINA_CYAN}PASS${NC}] $1"
 }
 
 print_warn() {
-    echo -e "[${YELLOW}WARN${NC}] $1"
+    echo -e "[${CARINA_BLUE}WARN${NC}] $1"
 }
 
 print_fail() {
-    echo -e "[${RED}FAIL${NC}] $1"
+    echo -e "[${CARINA_MAGENTA}FAIL${NC}] $1"
 }
 
 cmd_version() {
-    echo "CARINA OS version $CARINA_VERSION"
+    echo -e "${CARINA_CYAN}CARINA OS${NC} version ${CARINA_TEXT}$CARINA_VERSION${NC}"
 }
 
 cmd_doctor() {
-    echo "CARINA Doctor - System Health Check"
-    echo "===================================="
+    echo -e "${CARINA_CYAN}CARINA Doctor${NC} - System Health Check"
+    echo -e "${CARINA_MUTED}====================================${NC}"
     echo ""
     
     if [[ -f /etc/os-release ]]; then
@@ -89,16 +94,16 @@ cmd_doctor() {
         print_fail "Systemd: Not available"
     fi
     
-    if command -v docker &>/dev/null; then
+    if command -v podman &>/dev/null; then
+        print_pass "Container Runtime: Podman available"
+    elif command -v docker &>/dev/null; then
         if docker info &>/dev/null; then
-            print_pass "Container Runtime: Docker available"
+            print_warn "Container Runtime: Docker available (Podman preferred)"
         else
             print_warn "Container Runtime: Docker installed but not running"
         fi
-    elif command -v podman &>/dev/null; then
-        print_pass "Container Runtime: Podman available"
     else
-        print_warn "Container Runtime: Not installed (stub)"
+        print_warn "Container Runtime: Not installed (required for sandbox)"
     fi
     
     echo ""
@@ -106,8 +111,8 @@ cmd_doctor() {
 }
 
 cmd_profile_list() {
-    echo "Available Profiles"
-    echo "=================="
+    echo -e "${CARINA_CYAN}Available Profiles${NC}"
+    echo -e "${CARINA_MUTED}==================${NC}"
     echo ""
     
     if [[ ! -d "$PROFILES_DIR" ]]; then
@@ -132,7 +137,7 @@ cmd_profile_list() {
                     desc="Custom profile"
                     ;;
             esac
-            echo "  $name - $desc"
+            echo -e "  ${CARINA_CYAN}$name${NC} - $desc"
         fi
     done
 }
@@ -151,12 +156,12 @@ cmd_profile_apply() {
     local profile_dir="$PROFILES_DIR/$profile_name"
     
     if [[ ! -d "$profile_dir" ]]; then
-        echo "Profile '$profile_name' not found"
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Profile '$profile_name' not found"
         return 1
     fi
     
-    echo "Applying profile: $profile_name"
-    echo "================================"
+    echo -e "Applying profile: ${CARINA_CYAN}$profile_name${NC}"
+    echo -e "${CARINA_MUTED}================================${NC}"
     
     if [[ -f "$profile_dir/packages.txt" ]]; then
         echo "Installing packages..."
@@ -178,14 +183,14 @@ cmd_profile_apply() {
     fi
     
     echo ""
-    echo "Profile '$profile_name' applied successfully."
+    echo -e "Profile '${CARINA_CYAN}$profile_name${NC}' applied successfully."
 }
 
 cmd_gui_enable() {
     echo "Enabling GUI..."
     
     if [[ $EUID -ne 0 ]]; then
-        echo "This command requires root privileges (use sudo)"
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: This command requires root privileges (use sudo)"
         return 1
     fi
     
@@ -204,7 +209,7 @@ cmd_gui_enable() {
     systemctl enable gdm3 2>/dev/null || true
     
     echo ""
-    echo "GUI enabled. Reboot to start graphical interface."
+    echo -e "${CARINA_CYAN}GUI enabled.${NC} Reboot to start graphical interface."
     echo "Run: sudo reboot"
 }
 
@@ -212,7 +217,7 @@ cmd_gui_disable() {
     echo "Disabling GUI..."
     
     if [[ $EUID -ne 0 ]]; then
-        echo "This command requires root privileges (use sudo)"
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: This command requires root privileges (use sudo)"
         return 1
     fi
     
@@ -224,23 +229,413 @@ cmd_gui_disable() {
     systemctl disable gdm3 2>/dev/null || true
     
     echo ""
-    echo "GUI disabled. Reboot to apply changes."
+    echo -e "${CARINA_CYAN}GUI disabled.${NC} Reboot to apply changes."
     echo "Run: sudo reboot"
 }
 
+# ============================================================================
+# SANDBOX COMMANDS
+# ============================================================================
+
+SANDBOX_TEMPLATES_DIR="$SANDBOX_DIR/templates"
+SANDBOX_STATE_FILE="/var/lib/carina/sandboxes.json"
+SANDBOX_LOG_FILE="/var/log/carina-sandbox.log"
+SANDBOX_IMAGE_PREFIX="carina-sandbox"
+
+sandbox_log_action() {
+    local action="$1"
+    local details="$2"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local user="${SUDO_USER:-$USER}"
+    mkdir -p /var/log 2>/dev/null || true
+    echo "[$timestamp] [$user] $action: $details" >> "$SANDBOX_LOG_FILE" 2>/dev/null || true
+}
+
+sandbox_ensure_dirs() {
+    mkdir -p /var/lib/carina 2>/dev/null || true
+    mkdir -p /var/log 2>/dev/null || true
+    touch "$SANDBOX_LOG_FILE" 2>/dev/null || true
+    if [[ ! -f "$SANDBOX_STATE_FILE" ]]; then
+        echo '{"sandboxes":[]}' > "$SANDBOX_STATE_FILE" 2>/dev/null || true
+    fi
+}
+
+sandbox_check_podman() {
+    if ! command -v podman &>/dev/null; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Podman is not installed"
+        echo "Install with: sudo apt-get install -y podman"
+        return 1
+    fi
+}
+
+sandbox_generate_id() {
+    local template="$1"
+    local suffix
+    suffix=$(head -c 4 /dev/urandom | xxd -p)
+    echo "${template}-${suffix}"
+}
+
+sandbox_parse_ttl() {
+    local ttl="$1"
+    local seconds=0
+    
+    if [[ "$ttl" =~ ^([0-9]+)m$ ]]; then
+        seconds=$((${BASH_REMATCH[1]} * 60))
+    elif [[ "$ttl" =~ ^([0-9]+)h$ ]]; then
+        seconds=$((${BASH_REMATCH[1]} * 3600))
+    elif [[ "$ttl" =~ ^([0-9]+)s$ ]]; then
+        seconds=${BASH_REMATCH[1]}
+    elif [[ "$ttl" =~ ^([0-9]+)$ ]]; then
+        seconds=$((ttl * 60))
+    else
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Invalid TTL format: $ttl (use: 10m, 1h, 300s)"
+        return 1
+    fi
+    
+    echo "$seconds"
+}
+
+sandbox_add_state() {
+    local id="$1"
+    local template="$2"
+    local ttl_seconds="$3"
+    local start_time
+    start_time=$(date +%s)
+    local expire_time=$((start_time + ttl_seconds))
+    
+    sandbox_ensure_dirs
+    
+    local tmp_file
+    tmp_file=$(mktemp)
+    jq --arg id "$id" \
+       --arg template "$template" \
+       --argjson start "$start_time" \
+       --argjson ttl "$ttl_seconds" \
+       --argjson expire "$expire_time" \
+       '.sandboxes += [{"id": $id, "template": $template, "start_time": $start, "ttl": $ttl, "expire_time": $expire}]' \
+       "$SANDBOX_STATE_FILE" > "$tmp_file" 2>/dev/null
+    mv "$tmp_file" "$SANDBOX_STATE_FILE" 2>/dev/null || true
+}
+
+sandbox_remove_state() {
+    local id="$1"
+    sandbox_ensure_dirs
+    local tmp_file
+    tmp_file=$(mktemp)
+    jq --arg id "$id" '.sandboxes = [.sandboxes[] | select(.id != $id)]' "$SANDBOX_STATE_FILE" > "$tmp_file" 2>/dev/null
+    mv "$tmp_file" "$SANDBOX_STATE_FILE" 2>/dev/null || true
+}
+
+cmd_sandbox_templates() {
+    echo -e "${CARINA_CYAN}Available CARINA Sandbox Templates${NC}"
+    echo -e "${CARINA_MUTED}===================================${NC}"
+    echo ""
+    
+    if [[ ! -d "$SANDBOX_TEMPLATES_DIR" ]]; then
+        echo "No templates directory found at $SANDBOX_TEMPLATES_DIR"
+        echo "Run bootstrap script or install sandbox module first."
+        return 1
+    fi
+    
+    for template_dir in "$SANDBOX_TEMPLATES_DIR"/*/; do
+        if [[ -d "$template_dir" ]] && [[ -f "$template_dir/Containerfile" ]]; then
+            local name
+            name=$(basename "$template_dir")
+            echo -e "  ${CARINA_CYAN}-${NC} $name"
+        fi
+    done
+}
+
+cmd_sandbox_list() {
+    echo -e "${CARINA_CYAN}Active CARINA Sandboxes${NC}"
+    echo -e "${CARINA_MUTED}=======================${NC}"
+    echo ""
+    
+    sandbox_ensure_dirs
+    
+    local current_time
+    current_time=$(date +%s)
+    
+    if [[ ! -f "$SANDBOX_STATE_FILE" ]]; then
+        echo "No active sandboxes"
+        return 0
+    fi
+    
+    local count
+    count=$(jq '.sandboxes | length' "$SANDBOX_STATE_FILE" 2>/dev/null || echo "0")
+    
+    if [[ "$count" -eq 0 ]]; then
+        echo "No active sandboxes"
+        return 0
+    fi
+    
+    printf "%-14s %-10s %-8s %-8s\n" "ID" "TEMPLATE" "AGE" "TTL"
+    printf "%-14s %-10s %-8s %-8s\n" "--" "--------" "---" "---"
+    
+    jq -r '.sandboxes[] | "\(.id)|\(.template)|\(.start_time)|\(.expire_time)"' "$SANDBOX_STATE_FILE" 2>/dev/null | while IFS='|' read -r id template start_time expire_time; do
+        local age=$((current_time - start_time))
+        local ttl_remaining=$((expire_time - current_time))
+        
+        local age_str
+        if [[ $age -lt 60 ]]; then
+            age_str="${age}s"
+        else
+            age_str="$((age / 60))m"
+        fi
+        
+        local ttl_str
+        if [[ $ttl_remaining -le 0 ]]; then
+            ttl_str="expired"
+        elif [[ $ttl_remaining -lt 60 ]]; then
+            ttl_str="${ttl_remaining}s"
+        else
+            ttl_str="$((ttl_remaining / 60))m"
+        fi
+        
+        printf "%-14s %-10s %-8s %-8s\n" "$id" "$template" "$age_str" "$ttl_str"
+    done
+}
+
+cmd_sandbox_up() {
+    local template=""
+    local ttl="10m"
+    local name=""
+    
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --ttl)
+                ttl="$2"
+                shift 2
+                ;;
+            --name)
+                name="$2"
+                shift 2
+                ;;
+            -*)
+                echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown option: $1"
+                return 1
+                ;;
+            *)
+                if [[ -z "$template" ]]; then
+                    template="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+    
+    sandbox_check_podman || return 1
+    sandbox_ensure_dirs
+    
+    if [[ -z "$template" ]]; then
+        echo "Usage: carina sandbox up <template> [--ttl 10m] [--name <name>]"
+        echo ""
+        cmd_sandbox_templates
+        return 1
+    fi
+    
+    local template_dir="$SANDBOX_TEMPLATES_DIR/$template"
+    if [[ ! -d "$template_dir" ]] || [[ ! -f "$template_dir/Containerfile" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Template '$template' not found"
+        echo ""
+        cmd_sandbox_templates
+        return 1
+    fi
+    
+    local ttl_seconds
+    ttl_seconds=$(sandbox_parse_ttl "$ttl") || return 1
+    
+    local sandbox_id
+    if [[ -n "$name" ]]; then
+        sandbox_id="$name"
+    else
+        sandbox_id=$(sandbox_generate_id "$template")
+    fi
+    
+    local image_name="${SANDBOX_IMAGE_PREFIX}-${template}:latest"
+    
+    echo -e "Building sandbox image: ${CARINA_CYAN}$template${NC}"
+    sandbox_log_action "BUILD" "template=$template image=$image_name"
+    
+    podman build -t "$image_name" -f "$template_dir/Containerfile" "$template_dir" >/dev/null 2>&1
+    
+    echo -e "Starting sandbox: ${CARINA_CYAN}$sandbox_id${NC}"
+    sandbox_log_action "START" "id=$sandbox_id template=$template ttl=${ttl_seconds}s"
+    
+    podman run -d \
+        --name "$sandbox_id" \
+        --security-opt no-new-privileges:true \
+        --cap-drop ALL \
+        --read-only \
+        --tmpfs /tmp:rw,noexec,nosuid,size=100m \
+        --tmpfs /home/sandbox:rw,noexec,nosuid,size=100m \
+        --network bridge \
+        --memory 512m \
+        --cpus 1 \
+        "$image_name" \
+        sleep infinity >/dev/null
+    
+    sandbox_add_state "$sandbox_id" "$template" "$ttl_seconds"
+    
+    local ttl_display
+    if [[ $ttl_seconds -lt 60 ]]; then
+        ttl_display="${ttl_seconds} seconds"
+    else
+        ttl_display="$((ttl_seconds / 60)) minutes"
+    fi
+    
+    echo ""
+    echo -e "${CARINA_CYAN}Sandbox started:${NC} $sandbox_id"
+    echo -e "${CARINA_TEXT}TTL:${NC} $ttl_display"
+}
+
+cmd_sandbox_exec() {
+    local sandbox_id="$1"
+    shift || true
+    local cmd=("$@")
+    
+    sandbox_check_podman || return 1
+    
+    if [[ -z "$sandbox_id" ]]; then
+        echo "Usage: carina sandbox exec <name|id> <command>"
+        return 1
+    fi
+    
+    if [[ ${#cmd[@]} -eq 0 ]]; then
+        cmd=("bash")
+    fi
+    
+    if ! podman container exists "$sandbox_id" 2>/dev/null; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Sandbox '$sandbox_id' not found"
+        return 1
+    fi
+    
+    sandbox_log_action "EXEC" "id=$sandbox_id cmd=${cmd[*]}"
+    
+    podman exec -it "$sandbox_id" "${cmd[@]}"
+}
+
+cmd_sandbox_down() {
+    local sandbox_id="$1"
+    
+    sandbox_check_podman || return 1
+    sandbox_ensure_dirs
+    
+    if [[ -z "$sandbox_id" ]]; then
+        echo "Usage: carina sandbox down <name|id>"
+        return 1
+    fi
+    
+    echo -e "Stopping sandbox: ${CARINA_CYAN}$sandbox_id${NC}"
+    sandbox_log_action "STOP" "id=$sandbox_id"
+    
+    podman stop "$sandbox_id" >/dev/null 2>&1 || true
+    podman rm -f "$sandbox_id" >/dev/null 2>&1 || true
+    
+    sandbox_remove_state "$sandbox_id"
+    
+    echo -e "${CARINA_CYAN}Sandbox destroyed:${NC} $sandbox_id"
+}
+
+cmd_sandbox_cleanup() {
+    sandbox_check_podman || return 1
+    sandbox_ensure_dirs
+    
+    echo -e "${CARINA_CYAN}CARINA Sandbox Cleanup${NC}"
+    echo -e "${CARINA_MUTED}======================${NC}"
+    echo ""
+    
+    local current_time
+    current_time=$(date +%s)
+    
+    if [[ -f "$SANDBOX_STATE_FILE" ]]; then
+        jq -r '.sandboxes[] | "\(.id)|\(.expire_time)"' "$SANDBOX_STATE_FILE" 2>/dev/null | while IFS='|' read -r id expire_time; do
+            if [[ $current_time -ge $expire_time ]]; then
+                echo -e "Removing expired sandbox: ${CARINA_MAGENTA}$id${NC}"
+                sandbox_log_action "CLEANUP" "id=$id reason=expired"
+                podman stop "$id" >/dev/null 2>&1 || true
+                podman rm -f "$id" >/dev/null 2>&1 || true
+                sandbox_remove_state "$id"
+            fi
+        done
+    fi
+    
+    echo ""
+    echo "Checking for orphaned containers..."
+    local orphans
+    orphans=$(podman ps -a --filter "name=${SANDBOX_IMAGE_PREFIX}" --format "{{.Names}}" 2>/dev/null || true)
+    
+    for container in $orphans; do
+        if [[ -f "$SANDBOX_STATE_FILE" ]]; then
+            if ! jq -e --arg id "$container" '.sandboxes[] | select(.id == $id)' "$SANDBOX_STATE_FILE" >/dev/null 2>&1; then
+                echo -e "Removing orphan: ${CARINA_MAGENTA}$container${NC}"
+                sandbox_log_action "CLEANUP" "id=$container reason=orphan"
+                podman rm -f "$container" >/dev/null 2>&1 || true
+            fi
+        fi
+    done
+    
+    echo ""
+    echo -e "${CARINA_CYAN}Cleanup complete${NC}"
+}
+
+cmd_sandbox_help() {
+    echo -e "${CARINA_CYAN}CARINA Sandbox${NC} - Mission-Safe Execution Environments"
+    echo ""
+    echo -e "${CARINA_TEXT}Usage:${NC} carina sandbox <command> [options]"
+    echo ""
+    echo -e "${CARINA_TEXT}Commands:${NC}"
+    echo -e "  ${CARINA_CYAN}templates${NC}           List available sandbox templates"
+    echo -e "  ${CARINA_CYAN}list${NC}                List active sandboxes"
+    echo -e "  ${CARINA_CYAN}up${NC} <template>       Start a new sandbox"
+    echo -e "  ${CARINA_CYAN}exec${NC} <id> <cmd>     Execute command in sandbox"
+    echo -e "  ${CARINA_CYAN}down${NC} <id>           Stop and remove sandbox"
+    echo -e "  ${CARINA_CYAN}cleanup${NC}             Remove expired/orphaned sandboxes"
+    echo ""
+    echo -e "${CARINA_TEXT}Options for 'up':${NC}"
+    echo "  --ttl <duration>    Time to live (default: 10m)"
+    echo "  --name <name>       Custom sandbox name"
+    echo ""
+    echo -e "${CARINA_TEXT}Examples:${NC}"
+    echo "  carina sandbox up python --ttl 30m"
+    echo "  carina sandbox exec python-abc123 python --version"
+    echo "  carina sandbox down python-abc123"
+    echo ""
+}
+
+# ============================================================================
+# HELP
+# ============================================================================
+
 cmd_help() {
-    echo "CARINA CLI - Version $CARINA_VERSION"
+    echo -e "${CARINA_CYAN}CARINA CLI${NC} - Version ${CARINA_TEXT}$CARINA_VERSION${NC}"
     echo ""
-    echo "Usage: carina <command> [options]"
+    echo -e "${CARINA_TEXT}Usage:${NC} carina <command> [options]"
     echo ""
-    echo "Commands:"
-    echo "  doctor              Check system health"
+    echo -e "${CARINA_TEXT}Commands:${NC}"
+    echo -e "  ${CARINA_CYAN}doctor${NC}              Check system health"
+    echo -e "  ${CARINA_CYAN}profile${NC} <cmd>       Manage system profiles"
+    echo -e "  ${CARINA_CYAN}gui${NC} <cmd>           Enable/disable graphical interface"
+    echo -e "  ${CARINA_CYAN}sandbox${NC} <cmd>       Manage sandbox environments"
+    echo -e "  ${CARINA_CYAN}version${NC}             Show version"
+    echo -e "  ${CARINA_CYAN}help${NC}                Show this help"
+    echo ""
+    echo -e "${CARINA_TEXT}Profile commands:${NC}"
     echo "  profile list        List available profiles"
     echo "  profile apply <n>   Apply a profile"
+    echo ""
+    echo -e "${CARINA_TEXT}GUI commands:${NC}"
     echo "  gui enable          Enable graphical interface"
     echo "  gui disable         Disable graphical interface"
-    echo "  version             Show version"
-    echo "  help                Show this help"
+    echo ""
+    echo -e "${CARINA_TEXT}Sandbox commands:${NC}"
+    echo "  sandbox templates   List sandbox templates"
+    echo "  sandbox list        List active sandboxes"
+    echo "  sandbox up <t>      Start a sandbox"
+    echo "  sandbox exec <id>   Execute in sandbox"
+    echo "  sandbox down <id>   Stop sandbox"
+    echo "  sandbox cleanup     Remove expired sandboxes"
     echo ""
 }
 
@@ -263,7 +658,7 @@ main() {
                     cmd_profile_apply "$@"
                     ;;
                 *)
-                    echo "Unknown profile command: $subcmd"
+                    echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown profile command: $subcmd"
                     echo "Usage: carina profile [list|apply <name>]"
                     exit 1
                     ;;
@@ -280,8 +675,40 @@ main() {
                     cmd_gui_disable
                     ;;
                 *)
-                    echo "Unknown gui command: $subcmd"
+                    echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown gui command: $subcmd"
                     echo "Usage: carina gui [enable|disable]"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        sandbox)
+            local subcmd="${1:-help}"
+            shift || true
+            case "$subcmd" in
+                templates)
+                    cmd_sandbox_templates
+                    ;;
+                list)
+                    cmd_sandbox_list
+                    ;;
+                up)
+                    cmd_sandbox_up "$@"
+                    ;;
+                exec)
+                    cmd_sandbox_exec "$@"
+                    ;;
+                down)
+                    cmd_sandbox_down "$@"
+                    ;;
+                cleanup)
+                    cmd_sandbox_cleanup
+                    ;;
+                help|--help|-h)
+                    cmd_sandbox_help
+                    ;;
+                *)
+                    echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown sandbox command: $subcmd"
+                    cmd_sandbox_help
                     exit 1
                     ;;
             esac
@@ -293,7 +720,7 @@ main() {
             cmd_help
             ;;
         *)
-            echo "Unknown command: $cmd"
+            echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown command: $cmd"
             cmd_help
             exit 1
             ;;
