@@ -131,9 +131,14 @@ install_cli() {
     fi
     
     mkdir -p /var/lib/carina
+    chmod 777 /var/lib/carina
     if [[ ! -f /var/lib/carina/sandboxes.json ]]; then
         echo '{"sandboxes":[]}' > /var/lib/carina/sandboxes.json
     fi
+    chmod 666 /var/lib/carina/sandboxes.json
+    
+    touch /var/log/carina-sandbox.log
+    chmod 666 /var/log/carina-sandbox.log
     log "Sandbox support installed"
 }
 
