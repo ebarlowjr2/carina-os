@@ -230,6 +230,32 @@ apply_identity() {
     log "Ubuntu branding removed"
 }
 
+disable_ubuntu_telemetry() {
+    log "Disabling Ubuntu telemetry and error reporting..."
+    
+    # Disable apport (crash reporting)
+    if [[ -f /etc/default/apport ]]; then
+        echo "enabled=0" > /etc/default/apport
+    fi
+    systemctl stop apport 2>/dev/null || true
+    systemctl disable apport 2>/dev/null || true
+    systemctl mask apport 2>/dev/null || true
+    
+    # Disable motd-news (Ubuntu news in MOTD)
+    systemctl stop motd-news.timer 2>/dev/null || true
+    systemctl disable motd-news.timer 2>/dev/null || true
+    systemctl mask motd-news.timer 2>/dev/null || true
+    systemctl mask motd-news.service 2>/dev/null || true
+    
+    # Remove Ubuntu telemetry packages
+    apt-get remove -y whoopsie ubuntu-report popularity-contest 2>/dev/null || true
+    
+    # Clear any existing crash reports
+    rm -f /var/crash/* 2>/dev/null || true
+    
+    log "Ubuntu telemetry disabled"
+}
+
 setup_firstboot() {
     log "Setting up first-boot system..."
     
@@ -281,6 +307,7 @@ main() {
     install_podman
     install_cli
     apply_identity
+    disable_ubuntu_telemetry
     setup_firstboot
     apply_core_profile
     
