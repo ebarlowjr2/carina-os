@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- CARINA Status Icon - Health/Check concept -->
+  <defs>
+    <linearGradient id="statusGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3DE8FF"/>
+      <stop offset="100%" style="stop-color:#1FA2FF"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <circle cx="64" cy="64" r="60" fill="#050814"/>
+  
+  <!-- Outer status ring -->
+  <circle cx="64" cy="64" r="48" fill="none" stroke="url(#statusGradient)" stroke-width="4"/>
+  
+  <!-- Checkmark -->
+  <path d="M 40 64 L 56 80 L 88 48" 
+        fill="none" 
+        stroke="#3DE8FF" 
+        stroke-width="6" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"/>
+  
+  <!-- Status indicators - small dots around the ring -->
+  <circle cx="64" cy="20" r="4" fill="#3DE8FF"/>
+  <circle cx="100" cy="44" r="4" fill="#3DE8FF"/>
+  <circle cx="100" cy="84" r="4" fill="#3DE8FF"/>
+  <circle cx="64" cy="108" r="4" fill="#3DE8FF"/>
+  <circle cx="28" cy="84" r="4" fill="#3DE8FF"/>
+  <circle cx="28" cy="44" r="4" fill="#3DE8FF"/>
+  
+  <!-- Inner glow effect -->
+  <circle cx="64" cy="64" r="32" fill="none" stroke="#B14CFF" stroke-width="1" opacity="0.4"/>
+</svg>

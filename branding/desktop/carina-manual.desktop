@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=CARINA Mission Manual
+Comment=Official CARINA OS operating manual
+Exec=xdg-open /usr/share/doc/carina/manual/mission-manual.html
+Icon=carina
+Terminal=false
+Type=Application
+Categories=Education;System;Documentation;
+Keywords=carina;manual;documentation;help;

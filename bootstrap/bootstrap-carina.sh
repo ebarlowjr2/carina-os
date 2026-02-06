@@ -161,6 +161,72 @@ install_cli() {
     fi
     log "MissionLab profiles linked"
     
+    # Install MissionLab installers and lib
+    mkdir -p /opt/carina/missionlab/installers
+    mkdir -p /opt/carina/missionlab/lib
+    
+    if [[ -d "$REPO_DIR/missionlab/installers" ]]; then
+        cp -r "$REPO_DIR/missionlab/installers/"* /opt/carina/missionlab/installers/
+        chmod +x /opt/carina/missionlab/installers/*.sh 2>/dev/null || true
+        log "MissionLab installers installed"
+    fi
+    
+    if [[ -d "$REPO_DIR/missionlab/lib" ]]; then
+        cp -r "$REPO_DIR/missionlab/lib/"* /opt/carina/missionlab/lib/
+        chmod +x /opt/carina/missionlab/lib/*.sh 2>/dev/null || true
+        log "MissionLab lib installed"
+    fi
+    
+    # Setup MissionLab log file
+    touch /var/log/carina-missionlab.log
+    chown root:carina /var/log/carina-missionlab.log 2>/dev/null || true
+    chmod 664 /var/log/carina-missionlab.log
+    log "MissionLab log file created"
+    
+    # Setup logrotate for MissionLab logs
+    cat > /etc/logrotate.d/carina-missionlab << 'LOGROTATE'
+/var/log/carina-missionlab.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+    create 664 root carina
+}
+LOGROTATE
+    log "Logrotate configured for MissionLab logs"
+    
+    # Install branding assets (desktop entries, icons)
+    mkdir -p /opt/carina/branding/desktop
+    mkdir -p /opt/carina/branding/icons
+    
+    if [[ -d "$REPO_DIR/branding/desktop" ]]; then
+        cp -r "$REPO_DIR/branding/desktop/"* /opt/carina/branding/desktop/
+        log "Desktop entries staged"
+    fi
+    
+    if [[ -d "$REPO_DIR/branding/icons" ]]; then
+        cp -r "$REPO_DIR/branding/icons/"* /opt/carina/branding/icons/
+        log "Icons staged"
+    fi
+    
+    # Install Mission Manual documentation
+    mkdir -p /usr/share/doc/carina/manual
+    if [[ -d "$REPO_DIR/docs/manual" ]]; then
+        cp -r "$REPO_DIR/docs/manual/"* /usr/share/doc/carina/manual/
+        log "Mission Manual installed to /usr/share/doc/carina/manual/"
+    fi
+    
+    # Create HTML version of Mission Manual if pandoc is available
+    if command -v pandoc &>/dev/null && [[ -f /usr/share/doc/carina/manual/mission-manual.md ]]; then
+        pandoc /usr/share/doc/carina/manual/mission-manual.md \
+            -o /usr/share/doc/carina/manual/mission-manual.html \
+            --standalone \
+            --metadata title="CARINA Mission Manual" \
+            2>/dev/null || true
+        log "Mission Manual HTML generated"
+    fi
+    
     # Create carina group for sandbox state/log access
     if ! getent group carina >/dev/null 2>&1; then
         groupadd carina

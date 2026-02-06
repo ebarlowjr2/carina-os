@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=CARINA Sandbox
+Comment=Run isolated execution environments
+Exec=gnome-terminal -- bash -c "carina sandbox list; echo ''; echo 'Press Enter to close...'; read"
+Icon=carina-sandbox
+Terminal=false
+Type=Application
+Categories=Development;System;
+Keywords=carina;sandbox;container;isolated;

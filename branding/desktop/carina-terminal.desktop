@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=CARINA Terminal
+Comment=Open a terminal with CARINA CLI
+Exec=gnome-terminal -- bash -c "echo 'CARINA OS Terminal'; echo '=================='; echo ''; echo 'Type \"carina help\" for available commands'; echo ''; exec bash"
+Icon=carina
+Terminal=false
+Type=Application
+Categories=System;TerminalEmulator;
+Keywords=carina;terminal;cli;command;
