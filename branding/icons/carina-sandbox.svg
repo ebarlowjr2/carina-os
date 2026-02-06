@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- CARINA Sandbox Icon - Container/Box concept -->
+  <defs>
+    <linearGradient id="sandboxGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3DE8FF"/>
+      <stop offset="100%" style="stop-color:#1FA2FF"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <circle cx="64" cy="64" r="60" fill="#050814"/>
+  
+  <!-- Container box - 3D perspective -->
+  <!-- Front face -->
+  <path d="M 32 48 L 64 32 L 96 48 L 96 80 L 64 96 L 32 80 Z" 
+        fill="none" 
+        stroke="url(#sandboxGradient)" 
+        stroke-width="3"/>
+  
+  <!-- Top face -->
+  <path d="M 32 48 L 64 32 L 96 48 L 64 64 Z" 
+        fill="#3DE8FF" 
+        fill-opacity="0.2"/>
+  
+  <!-- Middle divider -->
+  <line x1="64" y1="64" x2="64" y2="96" stroke="#3DE8FF" stroke-width="2"/>
+  
+  <!-- Left face accent -->
+  <path d="M 32 48 L 64 64 L 64 96 L 32 80 Z" 
+        fill="#1FA2FF" 
+        fill-opacity="0.15"/>
+  
+  <!-- Isolation indicator - dashed circle -->
+  <circle cx="64" cy="64" r="44" fill="none" stroke="#B14CFF" stroke-width="2" stroke-dasharray="8 4" opacity="0.6"/>
+</svg>

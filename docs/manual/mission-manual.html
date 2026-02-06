@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CARINA Mission Manual</title>
+    <style>
+        :root {
+            --carina-void: #050814;
+            --carina-abyss: #0A0F2A;
+            --carina-cyan: #3DE8FF;
+            --carina-magenta: #B14CFF;
+            --carina-blue: #1FA2FF;
+            --carina-text: #E6ECFF;
+            --carina-muted: #9AA3C7;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--carina-void);
+            color: var(--carina-text);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        header {
+            text-align: center;
+            padding: 3rem 0;
+            border-bottom: 1px solid var(--carina-abyss);
+            margin-bottom: 2rem;
+        }
+        
+        h1 {
+            color: var(--carina-cyan);
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            color: var(--carina-muted);
+            font-size: 1.1rem;
+        }
+        
+        h2 {
+            color: var(--carina-cyan);
+            border-bottom: 2px solid var(--carina-blue);
+            padding-bottom: 0.5rem;
+            margin-top: 2.5rem;
+        }
+        
+        h3 {
+            color: var(--carina-blue);
+            margin-top: 1.5rem;
+        }
+        
+        a {
+            color: var(--carina-cyan);
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        code {
+            background: var(--carina-abyss);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+        
+        pre {
+            background: var(--carina-abyss);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            border-left: 3px solid var(--carina-cyan);
+        }
+        
+        pre code {
+            background: none;
+            padding: 0;
+        }
+        
+        .toc {
+            background: var(--carina-abyss);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+        
+        .toc h2 {
+            margin-top: 0;
+            border-bottom: none;
+        }
+        
+        .toc ul {
+            list-style: none;
+            padding-left: 1rem;
+        }
+        
+        .toc li {
+            margin: 0.5rem 0;
+        }
+        
+        .warning {
+            background: rgba(177, 76, 255, 0.1);
+            border-left: 3px solid var(--carina-magenta);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .info {
+            background: rgba(61, 232, 255, 0.1);
+            border-left: 3px solid var(--carina-cyan);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--carina-abyss);
+        }
+        
+        th {
+            color: var(--carina-cyan);
+            background: var(--carina-abyss);
+        }
+        
+        footer {
+            text-align: center;
+            padding: 2rem;
+            margin-top: 3rem;
+            border-top: 1px solid var(--carina-abyss);
+            color: var(--carina-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>CARINA Mission Manual</h1>
+            <p class="subtitle">Official Operating Manual for CARINA OS</p>
+        </header>
+        
+        <nav class="toc">
+            <h2>Contents</h2>
+            <ul>
+                <li><a href="#what-is-carina">What is CARINA OS</a></li>
+                <li><a href="#quick-start">Quick Start</a></li>
+                <li><a href="#sandbox">Sandbox Quick Start</a></li>
+                <li><a href="#missionlab">MissionLab Overview</a></li>
+                <li><a href="#security">Security Model</a></li>
+                <li><a href="#logs">Logs and Support</a></li>
+            </ul>
+        </nav>
+        
+        <section id="what-is-carina">
+            <h2>What is CARINA OS</h2>
+            <p>CARINA OS is a mission-focused operating system built on Ubuntu, designed for engineers, scientists, and developers who need reliable, secure, and efficient computing environments.</p>
+            
+            <h3>Core Components</h3>
+            <table>
+                <tr>
+                    <th>Component</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td><strong>CARINA Core</strong></td>
+                    <td>Headless-first base system with CLI tools</td>
+                </tr>
+                <tr>
+                    <td><strong>FlightDeck</strong></td>
+                    <td>Optional GUI environment (GNOME-based)</td>
+                </tr>
+                <tr>
+                    <td><strong>Sandbox</strong></td>
+                    <td>Isolated execution environments using Podman</td>
+                </tr>
+                <tr>
+                    <td><strong>MissionLab</strong></td>
+                    <td>Embedded and robotics development tooling</td>
+                </tr>
+            </table>
+        </section>
+        
+        <section id="quick-start">
+            <h2>Quick Start</h2>
+            
+            <h3>Installation</h3>
+            <pre><code>git clone https://github.com/ebarlowjr2/carina-os.git
+cd carina-os
+sudo ./bootstrap/bootstrap-carina.sh</code></pre>
+            
+            <h3>Verify Installation</h3>
+            <pre><code>carina doctor</code></pre>
+            
+            <h3>Enable GUI (FlightDeck)</h3>
+            <pre><code>sudo carina gui enable</code></pre>
+            
+            <h3>Disable GUI</h3>
+            <pre><code>sudo carina gui disable</code></pre>
+            
+            <h3>Update CARINA</h3>
+            <pre><code>cd ~/carina-os
+git pull
+sudo ./bootstrap/bootstrap-carina.sh</code></pre>
+        </section>
+        
+        <section id="sandbox">
+            <h2>Sandbox Quick Start</h2>
+            <p>CARINA Sandbox provides isolated execution environments for testing code safely.</p>
+            
+            <h3>List Available Templates</h3>
+            <pre><code>carina sandbox templates</code></pre>
+            
+            <h3>Start a Sandbox</h3>
+            <pre><code>carina sandbox up python --ttl 30m</code></pre>
+            
+            <h3>Execute Commands</h3>
+            <pre><code>carina sandbox exec &lt;sandbox-id&gt; python --version</code></pre>
+            
+            <h3>List Active Sandboxes</h3>
+            <pre><code>carina sandbox list</code></pre>
+            
+            <h3>Stop a Sandbox</h3>
+            <pre><code>carina sandbox down &lt;sandbox-id&gt;</code></pre>
+            
+            <h3>Cleanup Expired Sandboxes</h3>
+            <pre><code>carina sandbox cleanup</code></pre>
+        </section>
+        
+        <section id="missionlab">
+            <h2>MissionLab Overview</h2>
+            <p>MissionLab provides tools for embedded development and robotics.</p>
+            
+            <h3>Check Status</h3>
+            <pre><code>carina missionlab status</code></pre>
+            
+            <h3>Detect Connected Devices</h3>
+            <pre><code>carina missionlab devices</code></pre>
+            
+            <h3>Install Tools</h3>
+            <pre><code>sudo carina missionlab install arduino-cli
+sudo carina missionlab install platformio</code></pre>
+            
+            <h3>List Available Tools</h3>
+            <pre><code>carina missionlab list</code></pre>
+            
+            <h3>Apply Embedded Profile</h3>
+            <pre><code>sudo carina profile apply missionlab-embedded</code></pre>
+            
+            <div class="info">
+                <strong>Note:</strong> After installing PlatformIO, add <code>~/.local/bin</code> to your PATH:
+                <pre><code>export PATH="$PATH:$HOME/.local/bin"</code></pre>
+            </div>
+        </section>
+        
+        <section id="security">
+            <h2>Security Model</h2>
+            
+            <h3>Sandbox Security</h3>
+            <ul>
+                <li>All containers run unprivileged</li>
+                <li>All capabilities dropped (<code>--cap-drop ALL</code>)</li>
+                <li>Read-only filesystem with tmpfs for /tmp</li>
+                <li>Resource limits enforced (512MB RAM, 1 CPU)</li>
+                <li>No host mounts by default</li>
+            </ul>
+            
+            <h3>User Groups</h3>
+            <table>
+                <tr>
+                    <th>Group</th>
+                    <th>Purpose</th>
+                </tr>
+                <tr>
+                    <td><code>carina</code></td>
+                    <td>Access to CARINA state and logs</td>
+                </tr>
+                <tr>
+                    <td><code>dialout</code></td>
+                    <td>Serial port access</td>
+                </tr>
+                <tr>
+                    <td><code>plugdev</code></td>
+                    <td>USB device access</td>
+                </tr>
+            </table>
+        </section>
+        
+        <section id="logs">
+            <h2>Logs and Support</h2>
+            
+            <h3>Log Locations</h3>
+            <table>
+                <tr>
+                    <th>Log</th>
+                    <th>Location</th>
+                </tr>
+                <tr>
+                    <td>Bootstrap</td>
+                    <td><code>/var/log/carina-bootstrap.log</code></td>
+                </tr>
+                <tr>
+                    <td>Sandbox</td>
+                    <td><code>/var/log/carina/sandbox.log</code></td>
+                </tr>
+                <tr>
+                    <td>MissionLab</td>
+                    <td><code>/var/log/carina-missionlab.log</code></td>
+                </tr>
+            </table>
+            
+            <h3>Collect Logs for Support</h3>
+            <pre><code>carina doctor
+cat /var/log/carina-bootstrap.log
+cat /var/log/carina/sandbox.log
+cat /var/log/carina-missionlab.log</code></pre>
+        </section>
+        
+        <footer>
+            <p>CARINA OS Mission Manual</p>
+            <p>For more information, see the <a href="missionlab-embedded.md">Embedded Development Guide</a> and <a href="troubleshooting.md">Troubleshooting Guide</a>.</p>
+        </footer>
+    </div>
+</body>
+</html>
