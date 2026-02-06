@@ -152,6 +152,41 @@ install_cli() {
         log "MissionLab device-detect installed"
     fi
     
+    # Install MissionLab installers and lib
+    mkdir -p /opt/carina/missionlab/installers
+    mkdir -p /opt/carina/missionlab/lib
+    
+    if [[ -d "$REPO_DIR/missionlab/installers" ]]; then
+        cp -r "$REPO_DIR/missionlab/installers/"* /opt/carina/missionlab/installers/
+        chmod +x /opt/carina/missionlab/installers/*.sh 2>/dev/null || true
+        log "MissionLab installers installed"
+    fi
+    
+    if [[ -d "$REPO_DIR/missionlab/lib" ]]; then
+        cp -r "$REPO_DIR/missionlab/lib/"* /opt/carina/missionlab/lib/
+        chmod +x /opt/carina/missionlab/lib/*.sh 2>/dev/null || true
+        log "MissionLab lib installed"
+    fi
+    
+    # Setup MissionLab log file
+    touch /var/log/carina-missionlab.log
+    chown root:carina /var/log/carina-missionlab.log 2>/dev/null || true
+    chmod 664 /var/log/carina-missionlab.log
+    log "MissionLab log file created"
+    
+    # Setup logrotate for MissionLab logs
+    cat > /etc/logrotate.d/carina-missionlab << 'LOGROTATE'
+/var/log/carina-missionlab.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+    create 664 root carina
+}
+LOGROTATE
+    log "Logrotate configured for MissionLab logs"
+    
     # Link MissionLab profiles to main profiles directory
     if [[ -d /opt/carina/missionlab/profiles/embedded ]]; then
         ln -sf /opt/carina/missionlab/profiles/embedded /opt/carina/profiles/missionlab-embedded
