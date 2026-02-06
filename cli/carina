@@ -761,6 +761,98 @@ cmd_missionlab_devices() {
     fi
 }
 
+MISSIONLAB_INSTALLERS_DIR="$MISSIONLAB_DIR/installers"
+MISSIONLAB_LOG="/var/log/carina-missionlab.log"
+
+# Supported tools for install/uninstall
+declare -A MISSIONLAB_TOOLS=(
+    ["arduino-cli"]="upstream"
+    ["platformio"]="pipx"
+)
+
+cmd_missionlab_install() {
+    local tool="$1"
+    
+    if [[ -z "$tool" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: No tool specified"
+        echo "Usage: carina missionlab install <tool>"
+        echo ""
+        echo "Available tools:"
+        for t in "${!MISSIONLAB_TOOLS[@]}"; do
+            echo "  $t"
+        done
+        return 1
+    fi
+    
+    if [[ -z "${MISSIONLAB_TOOLS[$tool]}" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown tool: $tool"
+        echo "Available tools:"
+        for t in "${!MISSIONLAB_TOOLS[@]}"; do
+            echo "  $t"
+        done
+        return 1
+    fi
+    
+    local installer="$MISSIONLAB_INSTALLERS_DIR/$tool.sh"
+    
+    if [[ ! -x "$installer" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Installer not found: $installer"
+        return 1
+    fi
+    
+    # Run installer
+    bash "$installer" install
+}
+
+cmd_missionlab_uninstall() {
+    local tool="$1"
+    local purge="${2:-}"
+    
+    if [[ -z "$tool" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: No tool specified"
+        echo "Usage: carina missionlab uninstall <tool> [--purge]"
+        return 1
+    fi
+    
+    if [[ -z "${MISSIONLAB_TOOLS[$tool]}" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown tool: $tool"
+        return 1
+    fi
+    
+    local installer="$MISSIONLAB_INSTALLERS_DIR/$tool.sh"
+    
+    if [[ ! -x "$installer" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Installer not found: $installer"
+        return 1
+    fi
+    
+    # Run uninstaller
+    bash "$installer" uninstall "$purge"
+}
+
+cmd_missionlab_list() {
+    echo -e "${CARINA_CYAN}CARINA MissionLab - Available Tools${NC}"
+    echo -e "${CARINA_MUTED}====================================${NC}"
+    echo ""
+    
+    printf "%-15s %-12s %s\n" "Tool" "Method" "Status"
+    printf "%-15s %-12s %s\n" "----" "------" "------"
+    
+    for tool in "${!MISSIONLAB_TOOLS[@]}"; do
+        local method="${MISSIONLAB_TOOLS[$tool]}"
+        local status="not installed"
+        
+        local installer="$MISSIONLAB_INSTALLERS_DIR/$tool.sh"
+        if [[ -x "$installer" ]]; then
+            status=$(bash "$installer" check 2>/dev/null || echo "not installed")
+        fi
+        
+        printf "%-15s %-12s %s\n" "$tool" "$method" "$status"
+    done
+    
+    echo ""
+}
+
 cmd_missionlab_help() {
     echo -e "${CARINA_CYAN}CARINA MissionLab${NC} - Embedded & Robotics Development"
     echo ""
@@ -769,10 +861,23 @@ cmd_missionlab_help() {
     echo -e "${CARINA_TEXT}Commands:${NC}"
     echo -e "  ${CARINA_CYAN}status${NC}              Check toolchain and device access"
     echo -e "  ${CARINA_CYAN}devices${NC}             Detect connected devices"
+    echo -e "  ${CARINA_CYAN}list${NC}                List available tools and status"
+    echo -e "  ${CARINA_CYAN}install${NC} <tool>      Install a tool"
+    echo -e "  ${CARINA_CYAN}uninstall${NC} <tool>    Uninstall a tool"
+    echo ""
+    echo -e "${CARINA_TEXT}Available tools:${NC}"
+    echo "  arduino-cli       Arduino command-line interface"
+    echo "  platformio        Universal embedded development platform"
     echo ""
     echo -e "${CARINA_TEXT}Profiles:${NC}"
     echo "  carina profile apply missionlab-embedded"
     echo "  carina profile apply missionlab-robotics"
+    echo ""
+    echo -e "${CARINA_TEXT}Examples:${NC}"
+    echo "  carina missionlab install arduino-cli"
+    echo "  carina missionlab install platformio"
+    echo "  carina missionlab list"
+    echo "  carina missionlab status"
     echo ""
 }
 
@@ -813,6 +918,9 @@ cmd_help() {
     echo -e "${CARINA_TEXT}MissionLab commands:${NC}"
     echo "  missionlab status   Check toolchain and access"
     echo "  missionlab devices  Detect connected devices"
+    echo "  missionlab list     List available tools"
+    echo "  missionlab install  Install a tool"
+    echo "  missionlab uninstall Uninstall a tool"
     echo ""
 }
 
@@ -899,6 +1007,15 @@ main() {
                     ;;
                 devices)
                     cmd_missionlab_devices
+                    ;;
+                list)
+                    cmd_missionlab_list
+                    ;;
+                install)
+                    cmd_missionlab_install "$@"
+                    ;;
+                uninstall)
+                    cmd_missionlab_uninstall "$@"
                     ;;
                 help|--help|-h)
                     cmd_missionlab_help
