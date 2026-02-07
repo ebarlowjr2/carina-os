@@ -882,6 +882,263 @@ cmd_missionlab_help() {
 }
 
 # ============================================================================
+# CONTROL COMMANDS (AI Advisory System)
+# ============================================================================
+
+CONTROL_DIR="/opt/carina/control"
+CONTROL_LOG_FILE="/var/log/carina-control.log"
+
+cmd_control_help() {
+    echo -e "${CARINA_CYAN}CARINA Control${NC} - AI Advisory System"
+    echo ""
+    echo "Usage: carina control <command>"
+    echo ""
+    echo "Commands:"
+    echo "  status    Show Control subsystem status"
+    echo "  advise    Generate advisory report"
+    echo "  help      Show this help message"
+    echo ""
+    echo "Security:"
+    echo "  - Read-only: No commands are executed"
+    echo "  - Local: No network access required"
+    echo "  - Transparent: All inputs are auditable"
+    echo ""
+}
+
+cmd_control_status() {
+    echo -e "${CARINA_CYAN}CARINA Control Status${NC}"
+    echo ""
+    
+    # Check system data availability
+    echo -n "- System data: "
+    if [[ -f /proc/loadavg && -f /proc/meminfo ]]; then
+        echo -e "${CARINA_CYAN}OK${NC}"
+    else
+        echo -e "${CARINA_BLUE}PARTIAL${NC}"
+    fi
+    
+    # Check sandbox data availability
+    echo -n "- Sandbox data: "
+    if [[ -d /var/lib/carina/sandbox ]] || [[ -f /var/log/carina-sandbox.log ]]; then
+        echo -e "${CARINA_CYAN}OK${NC}"
+    else
+        echo -e "${CARINA_BLUE}NO DATA${NC}"
+    fi
+    
+    # Check MissionLab data availability
+    echo -n "- MissionLab data: "
+    if command -v arduino-cli &>/dev/null || command -v pio &>/dev/null || [[ -f /var/log/carina-missionlab.log ]]; then
+        echo -e "${CARINA_CYAN}OK${NC}"
+    else
+        echo -e "${CARINA_BLUE}NO DATA${NC}"
+    fi
+    
+    # Check logs accessibility
+    echo -n "- Logs accessible: "
+    if [[ -r /var/log/carina-sandbox.log ]] || [[ -r /var/log/carina-missionlab.log ]] || [[ -w /var/log/carina-control.log ]] || [[ -w /var/log ]]; then
+        echo -e "${CARINA_CYAN}OK${NC}"
+    else
+        echo -e "${CARINA_BLUE}LIMITED${NC}"
+    fi
+    
+    # Execution capability (must always be DISABLED)
+    echo -n "- Execution capability: "
+    echo -e "${CARINA_CYAN}DISABLED${NC}"
+    
+    echo ""
+    echo "Control version: 0.1"
+    echo "Advisory mode: ENABLED"
+}
+
+control_log_advisory() {
+    local status="$1"
+    local sources="$2"
+    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local user=$(whoami)
+    
+    mkdir -p "$(dirname "$CONTROL_LOG_FILE")" 2>/dev/null || true
+    echo "$timestamp user=$user action=advisory status=$status sources=\"$sources\"" >> "$CONTROL_LOG_FILE" 2>/dev/null || true
+}
+
+control_collect_data() {
+    local data=""
+    
+    # System data
+    data+="=== SYSTEM DATA ==="$'\n'
+    data+="OS_VERSION:"$'\n'
+    if [[ -f /etc/os-release ]]; then
+        data+=$(grep -E "^(NAME|VERSION|PRETTY_NAME)=" /etc/os-release 2>/dev/null || echo "  Unknown")
+        data+=$'\n'
+    fi
+    data+="UPTIME:"$'\n'
+    data+=$(uptime -p 2>/dev/null || echo "  Unknown")
+    data+=$'\n'
+    data+="LOAD_AVERAGES:"$'\n'
+    if [[ -f /proc/loadavg ]]; then
+        data+=$(cat /proc/loadavg | awk '{print "  1min: "$1", 5min: "$2", 15min: "$3}')
+        data+=$'\n'
+    fi
+    data+="DISK_USAGE:"$'\n'
+    data+=$(df -h / 2>/dev/null | tail -1 | awk '{print "  Total: "$2", Used: "$3", Available: "$4", Use%: "$5}' || echo "  Unknown")
+    data+=$'\n'
+    data+="=== END SYSTEM DATA ==="$'\n'
+    
+    # Sandbox data
+    data+="=== SANDBOX DATA ==="$'\n'
+    data+="ACTIVE_SANDBOXES:"$'\n'
+    if [[ -d /var/lib/carina/sandbox ]]; then
+        local active_count=$(find /var/lib/carina/sandbox -name "*.state" 2>/dev/null | wc -l)
+        data+="  Count: $active_count"$'\n'
+    else
+        data+="  Count: 0"$'\n'
+    fi
+    data+="=== END SANDBOX DATA ==="$'\n'
+    
+    # MissionLab data
+    data+="=== MISSIONLAB DATA ==="$'\n'
+    data+="INSTALLED_TOOLS:"$'\n'
+    if command -v arduino-cli &>/dev/null; then
+        data+="  arduino-cli: installed"$'\n'
+    else
+        data+="  arduino-cli: not installed"$'\n'
+    fi
+    if command -v pio &>/dev/null || command -v platformio &>/dev/null; then
+        data+="  platformio: installed"$'\n'
+    else
+        data+="  platformio: not installed"$'\n'
+    fi
+    data+="PERMISSION_READINESS:"$'\n'
+    local current_user=$(whoami)
+    if groups "$current_user" 2>/dev/null | grep -q dialout; then
+        data+="  dialout: member"$'\n'
+    else
+        data+="  dialout: not member"$'\n'
+    fi
+    if groups "$current_user" 2>/dev/null | grep -q plugdev; then
+        data+="  plugdev: member"$'\n'
+    else
+        data+="  plugdev: not member"$'\n'
+    fi
+    data+="CONNECTED_DEVICES:"$'\n'
+    if [[ -d /dev/serial/by-id ]]; then
+        local device_count=$(ls /dev/serial/by-id 2>/dev/null | wc -l)
+        data+="  Serial devices: $device_count"$'\n'
+    else
+        data+="  Serial devices: 0"$'\n'
+    fi
+    data+="=== END MISSIONLAB DATA ==="$'\n'
+    
+    echo "$data"
+}
+
+control_generate_advisory() {
+    local data="$1"
+    
+    echo -e "${CARINA_CYAN}CARINA Control Advisory Report${NC}"
+    echo ""
+    echo -e "${CARINA_BLUE}Observations:${NC}"
+    
+    local observations=""
+    local recommendations=""
+    
+    # System observations
+    if echo "$data" | grep -q "LOAD_AVERAGES:"; then
+        local load=$(echo "$data" | grep -A1 "LOAD_AVERAGES:" | tail -1 | grep -oP '1min: \K[0-9.]+' || echo "0")
+        if [[ -n "$load" ]]; then
+            local load_int=${load%.*}
+            if [[ $load_int -gt 2 ]]; then
+                observations+="- System load is elevated ($load)"$'\n'
+                recommendations+="1. Consider reviewing running processes or scaling resources."$'\n'
+            else
+                observations+="- System load is normal ($load)"$'\n'
+            fi
+        fi
+    fi
+    
+    # Disk usage
+    if echo "$data" | grep -q "DISK_USAGE:"; then
+        local disk_pct=$(echo "$data" | grep -A1 "DISK_USAGE:" | tail -1 | grep -oP 'Use%: \K[0-9]+' || echo "0")
+        if [[ -n "$disk_pct" && $disk_pct -gt 80 ]]; then
+            observations+="- Disk usage is high (${disk_pct}%)"$'\n'
+            recommendations+="- Consider cleaning up old files or expanding storage."$'\n'
+        elif [[ -n "$disk_pct" ]]; then
+            observations+="- Disk usage is healthy (${disk_pct}%)"$'\n'
+        fi
+    fi
+    
+    # Sandbox observations
+    if echo "$data" | grep -q "ACTIVE_SANDBOXES:"; then
+        local sandbox_count=$(echo "$data" | grep -A1 "ACTIVE_SANDBOXES:" | grep "Count:" | grep -oP 'Count: \K[0-9]+' || echo "0")
+        if [[ $sandbox_count -gt 0 ]]; then
+            observations+="- $sandbox_count active sandbox(es) running"$'\n'
+        else
+            observations+="- No active sandboxes"$'\n'
+        fi
+    fi
+    
+    # MissionLab observations
+    if echo "$data" | grep -q "arduino-cli: installed"; then
+        observations+="- Arduino CLI is installed"$'\n'
+    else
+        observations+="- Arduino CLI is not installed"$'\n'
+        recommendations+="- Consider installing Arduino CLI with: carina missionlab install arduino-cli"$'\n'
+    fi
+    
+    if echo "$data" | grep -q "platformio: installed"; then
+        observations+="- PlatformIO is installed"$'\n'
+    fi
+    
+    # Permission observations
+    if echo "$data" | grep -q "dialout: not member"; then
+        observations+="- User is not in dialout group (serial access may fail)"$'\n'
+        recommendations+="- Add user to dialout group: sudo usermod -aG dialout \$USER"$'\n'
+    fi
+    
+    if echo "$data" | grep -q "plugdev: not member"; then
+        observations+="- User is not in plugdev group (USB access may fail)"$'\n'
+        recommendations+="- Add user to plugdev group: sudo usermod -aG plugdev \$USER"$'\n'
+    fi
+    
+    # Device observations
+    if echo "$data" | grep -q "Serial devices: 0"; then
+        observations+="- No serial devices detected"$'\n'
+    fi
+    
+    # Print observations
+    if [[ -n "$observations" ]]; then
+        echo "$observations"
+    else
+        echo "- System appears healthy"
+        echo "- No issues detected in collected data"
+    fi
+    
+    echo ""
+    echo -e "${CARINA_BLUE}Recommendations:${NC}"
+    
+    if [[ -n "$recommendations" ]]; then
+        echo "$recommendations"
+    else
+        echo "- No immediate actions recommended"
+        echo "- Continue monitoring system health with: carina doctor"
+    fi
+    
+    echo ""
+    echo -e "${CARINA_MAGENTA}No actions were taken.${NC}"
+}
+
+cmd_control_advise() {
+    echo "Collecting system data..."
+    echo ""
+    
+    local collected_data
+    collected_data=$(control_collect_data)
+    
+    control_log_advisory "success" "system,sandbox,missionlab"
+    
+    control_generate_advisory "$collected_data"
+}
+
+# ============================================================================
 # HELP
 # ============================================================================
 
@@ -896,6 +1153,7 @@ cmd_help() {
     echo -e "  ${CARINA_CYAN}gui${NC} <cmd>           Enable/disable graphical interface"
     echo -e "  ${CARINA_CYAN}sandbox${NC} <cmd>       Manage sandbox environments"
     echo -e "  ${CARINA_CYAN}missionlab${NC} <cmd>    Embedded & robotics development"
+    echo -e "  ${CARINA_CYAN}control${NC} <cmd>       AI advisory system"
     echo -e "  ${CARINA_CYAN}version${NC}             Show version"
     echo -e "  ${CARINA_CYAN}help${NC}                Show this help"
     echo ""
@@ -921,6 +1179,10 @@ cmd_help() {
     echo "  missionlab list     List available tools"
     echo "  missionlab install  Install a tool"
     echo "  missionlab uninstall Uninstall a tool"
+    echo ""
+    echo -e "${CARINA_TEXT}Control commands:${NC}"
+    echo "  control status      Show advisory system status"
+    echo "  control advise      Generate advisory report"
     echo ""
 }
 
@@ -1023,6 +1285,26 @@ main() {
                 *)
                     echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown missionlab command: $subcmd"
                     cmd_missionlab_help
+                    exit 1
+                    ;;
+            esac
+            ;;
+        control)
+            local subcmd="${1:-help}"
+            shift || true
+            case "$subcmd" in
+                status)
+                    cmd_control_status
+                    ;;
+                advise)
+                    cmd_control_advise
+                    ;;
+                help|--help|-h)
+                    cmd_control_help
+                    ;;
+                *)
+                    echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown control command: $subcmd"
+                    cmd_control_help
                     exit 1
                     ;;
             esac
