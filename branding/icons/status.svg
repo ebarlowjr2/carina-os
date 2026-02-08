@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- CARINA Status Icon - Health/check indicator -->
+  <!-- Colors: Cyan #3DE8FF, Magenta #B14CFF, Blue #1FA2FF -->
+  
+  <!-- Outer circle (gauge) -->
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#1FA2FF" stroke-width="4"/>
+  
+  <!-- Status arc (healthy indicator) -->
+  <path d="M 32 6 A 26 26 0 1 1 6 32" 
+        fill="none" stroke="#3DE8FF" stroke-width="4" stroke-linecap="round"/>
+  
+  <!-- Checkmark -->
+  <polyline points="20,32 28,40 44,24" 
+            fill="none" stroke="#B14CFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Center dot -->
+  <circle cx="32" cy="32" r="3" fill="#3DE8FF"/>
+</svg>

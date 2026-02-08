@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- CARINA Sandbox Icon - Container/box shape -->
+  <!-- Colors: Cyan #3DE8FF, Magenta #B14CFF, Blue #1FA2FF -->
+  
+  <!-- Container box outline -->
+  <rect x="10" y="16" width="44" height="36" rx="4" ry="4" 
+        fill="none" stroke="#3DE8FF" stroke-width="3"/>
+  
+  <!-- Lid/top section -->
+  <rect x="10" y="16" width="44" height="10" rx="4" ry="4" 
+        fill="#1FA2FF"/>
+  
+  <!-- Isolation bars inside -->
+  <line x1="22" y1="32" x2="22" y2="46" stroke="#B14CFF" stroke-width="2"/>
+  <line x1="32" y1="32" x2="32" y2="46" stroke="#B14CFF" stroke-width="2"/>
+  <line x1="42" y1="32" x2="42" y2="46" stroke="#B14CFF" stroke-width="2"/>
+  
+  <!-- Lock indicator on lid -->
+  <circle cx="32" cy="21" r="3" fill="#3DE8FF"/>
+</svg>
