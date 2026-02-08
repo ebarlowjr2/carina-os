@@ -76,7 +76,8 @@ install_base_packages() {
         openssh-server \
         chrony \
         ufw \
-        xxd
+        xxd \
+        dbus-x11
     log "Base packages installed"
 }
 
