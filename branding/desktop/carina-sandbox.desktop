@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=CARINA Sandbox
+Comment=Run isolated execution environments
+Exec=xfce4-terminal --command="carina sandbox list"
+Icon=sandbox
+Terminal=true
+Type=Application
+Categories=Development;System;

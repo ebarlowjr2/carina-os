@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- CARINA Logo - Main icon -->
+  <!-- Colors: Cyan #3DE8FF, Magenta #B14CFF, Blue #1FA2FF -->
+  
+  <!-- Outer ring -->
+  <circle cx="32" cy="32" r="28" fill="none" stroke="#3DE8FF" stroke-width="3"/>
+  
+  <!-- Inner star/compass shape -->
+  <polygon points="32,8 36,24 52,24 40,34 44,50 32,40 20,50 24,34 12,24 28,24" 
+           fill="#1FA2FF" stroke="#B14CFF" stroke-width="1.5"/>
+  
+  <!-- Center dot -->
+  <circle cx="32" cy="32" r="4" fill="#3DE8FF"/>
+</svg>
