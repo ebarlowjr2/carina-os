@@ -76,7 +76,8 @@ install_base_packages() {
         openssh-server \
         chrony \
         ufw \
-        xxd
+        xxd \
+        dbus-x11
     log "Base packages installed"
 }
 
@@ -205,6 +206,20 @@ LOGROTATE
     log "Logrotate configured for sandbox logs"
     
     log "Sandbox support installed"
+    
+    # Stage branding assets for FlightDeck profile
+    mkdir -p /opt/carina/branding/desktop
+    mkdir -p /opt/carina/branding/icons
+    
+    if [[ -d "$REPO_DIR/branding/desktop" ]]; then
+        cp -r "$REPO_DIR/branding/desktop/"* /opt/carina/branding/desktop/ 2>/dev/null || true
+        log "Desktop entries staged"
+    fi
+    
+    if [[ -d "$REPO_DIR/branding/icons" ]]; then
+        cp -r "$REPO_DIR/branding/icons/"* /opt/carina/branding/icons/ 2>/dev/null || true
+        log "Icons staged"
+    fi
 }
 
 apply_identity() {

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- CARINA MissionLab Icon - Circuit/chip shape -->
+  <!-- Colors: Cyan #3DE8FF, Magenta #B14CFF, Blue #1FA2FF -->
+  
+  <!-- Main chip body -->
+  <rect x="16" y="16" width="32" height="32" rx="2" ry="2" 
+        fill="#1FA2FF" stroke="#3DE8FF" stroke-width="2"/>
+  
+  <!-- Chip pins - top -->
+  <line x1="24" y1="8" x2="24" y2="16" stroke="#B14CFF" stroke-width="3"/>
+  <line x1="32" y1="8" x2="32" y2="16" stroke="#B14CFF" stroke-width="3"/>
+  <line x1="40" y1="8" x2="40" y2="16" stroke="#B14CFF" stroke-width="3"/>
+  
+  <!-- Chip pins - bottom -->
+  <line x1="24" y1="48" x2="24" y2="56" stroke="#B14CFF" stroke-width="3"/>
+  <line x1="32" y1="48" x2="32" y2="56" stroke="#B14CFF" stroke-width="3"/>
+  <line x1="40" y1="48" x2="40" y2="56" stroke="#B14CFF" stroke-width="3"/>
+  
+  <!-- Chip pins - left -->
+  <line x1="8" y1="24" x2="16" y2="24" stroke="#B14CFF" stroke-width="3"/>
+  <line x1="8" y1="32" x2="16" y2="32" stroke="#B14CFF" stroke-width="3"/>
+  <line x1="8" y1="40" x2="16" y2="40" stroke="#B14CFF" stroke-width="3"/>
+  
+  <!-- Chip pins - right -->
+  <line x1="48" y1="24" x2="56" y2="24" stroke="#B14CFF" stroke-width="3"/>
+  <line x1="48" y1="32" x2="56" y2="32" stroke="#B14CFF" stroke-width="3"/>
+  <line x1="48" y1="40" x2="56" y2="40" stroke="#B14CFF" stroke-width="3"/>
+  
+  <!-- Center circuit pattern -->
+  <circle cx="32" cy="32" r="6" fill="none" stroke="#3DE8FF" stroke-width="2"/>
+  <circle cx="32" cy="32" r="2" fill="#3DE8FF"/>
+</svg>
