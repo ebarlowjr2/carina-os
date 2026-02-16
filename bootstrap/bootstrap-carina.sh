@@ -207,6 +207,44 @@ LOGROTATE
     
     log "Sandbox support installed"
     
+    # Setup CARINA Control directories (Sprint 5A)
+    mkdir -p /var/lib/carina/control
+    chown root:carina /var/lib/carina/control
+    chmod 2775 /var/lib/carina/control
+    if [[ ! -f /var/lib/carina/control/proposals.json ]]; then
+        echo '{"proposals":[],"next_id":1}' > /var/lib/carina/control/proposals.json
+    fi
+    chown root:carina /var/lib/carina/control/proposals.json
+    chmod 664 /var/lib/carina/control/proposals.json
+    
+    # Setup control log file
+    touch /var/log/carina-control.log
+    chown root:carina /var/log/carina-control.log
+    chmod 664 /var/log/carina-control.log
+    
+    # Setup logrotate for control logs
+    cat > /etc/logrotate.d/carina-control << 'LOGROTATE'
+/var/log/carina-control.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+    create 664 root carina
+}
+LOGROTATE
+    log "CARINA Control directories and logging configured"
+    
+    # Install control module files
+    mkdir -p /opt/carina/control
+    if [[ -d "$REPO_DIR/control" ]]; then
+        cp -r "$REPO_DIR/control/"* /opt/carina/control/
+        chmod +x /opt/carina/control/*.sh 2>/dev/null || true
+        chmod +x /opt/carina/control/execution/*.sh 2>/dev/null || true
+        chmod +x /opt/carina/control/collect/*.sh 2>/dev/null || true
+        log "CARINA Control module installed"
+    fi
+    
     # Stage branding assets for FlightDeck profile
     mkdir -p /opt/carina/branding/desktop
     mkdir -p /opt/carina/branding/icons
