@@ -777,6 +777,436 @@ cmd_missionlab_help() {
 }
 
 # ============================================================================
+# CONTROL COMMANDS (Sprint 5A - Confirm-to-Execute Mode)
+# ============================================================================
+
+CONTROL_DIR="/opt/carina/control"
+CONTROL_PROPOSALS_FILE="/var/lib/carina/control/proposals.json"
+CONTROL_LOG_FILE="/var/log/carina-control.log"
+
+control_ensure_dirs() {
+    mkdir -p /var/lib/carina/control 2>/dev/null || true
+    if [[ ! -f "$CONTROL_PROPOSALS_FILE" ]]; then
+        echo '{"proposals":[],"next_id":1}' > "$CONTROL_PROPOSALS_FILE" 2>/dev/null || true
+    fi
+    chmod 664 "$CONTROL_PROPOSALS_FILE" 2>/dev/null || true
+}
+
+control_log_action() {
+    local user="${SUDO_USER:-$(whoami)}"
+    local action="$1"
+    local proposal_id="$2"
+    local status="$3"
+    local sandbox="${4:-none}"
+    local extra="${5:-}"
+    
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local log_entry="$timestamp user=$user action=$action proposal=$proposal_id status=$status sandbox=$sandbox"
+    
+    if [[ -n "$extra" ]]; then
+        log_entry="$log_entry $extra"
+    fi
+    
+    echo "$log_entry" >> "$CONTROL_LOG_FILE" 2>/dev/null || true
+}
+
+# Policy validation - whitelist approach for safety
+control_validate_command() {
+    local cmd="$1"
+    
+    # Forbidden patterns (blacklist)
+    local forbidden_patterns=(
+        "rm -rf /"
+        "sudo "
+        "su "
+        "systemctl "
+        "service "
+        "chmod 777"
+        "chown root"
+        "nmap "
+        "apt install"
+        "apt-get install"
+        "pip install"
+        "eval "
+        "exec "
+        "/etc/shadow"
+        "/etc/passwd"
+        ".ssh/"
+        ".env"
+    )
+    
+    for pattern in "${forbidden_patterns[@]}"; do
+        if [[ "$cmd" == *"$pattern"* ]]; then
+            echo "FORBIDDEN"
+            return 1
+        fi
+    done
+    
+    # Allowed patterns (whitelist)
+    local allowed_patterns=(
+        "^[a-zA-Z0-9_-]+ --version$"
+        "^[a-zA-Z0-9_-]+ -v$"
+        "^[a-zA-Z0-9_-]+ version$"
+        "^arduino-cli "
+        "^platformio "
+        "^python --version$"
+        "^python3 --version$"
+        "^node --version$"
+        "^npm --version$"
+        "^cargo --version$"
+        "^rustc --version$"
+        "^go version$"
+        "^gcc --version$"
+        "^make --version$"
+        "^uname "
+        "^cat /etc/os-release$"
+        "^df -h$"
+        "^free -h$"
+        "^uptime$"
+        "^whoami$"
+        "^id$"
+        "^ls "
+        "^make$"
+        "^make test$"
+        "^npm test$"
+        "^npm run "
+        "^cargo test$"
+        "^cargo build$"
+        "^pytest$"
+    )
+    
+    for pattern in "${allowed_patterns[@]}"; do
+        if [[ "$cmd" =~ $pattern ]]; then
+            echo "ALLOWED"
+            return 0
+        fi
+    done
+    
+    echo "NOT_ALLOWED"
+    return 1
+}
+
+control_assess_risk() {
+    local cmd="$1"
+    
+    if [[ "$cmd" =~ (--version|-v|version|whoami|id|uname|uptime) ]]; then
+        echo "low"
+    elif [[ "$cmd" =~ (cat|ls|head|tail|make|build|test) ]]; then
+        echo "medium"
+    else
+        echo "medium"
+    fi
+}
+
+cmd_control_propose() {
+    local description="$1"
+    local command="$2"
+    local template="${3:-ubuntu}"
+    
+    if [[ -z "$description" ]] || [[ -z "$command" ]]; then
+        echo -e "${CARINA_CYAN}CARINA Control${NC} - Propose Action"
+        echo ""
+        echo "Usage: carina control propose <description> <command> [template]"
+        echo ""
+        echo "Example:"
+        echo "  carina control propose \"Check Arduino CLI version\" \"arduino-cli version\" ubuntu"
+        return 1
+    fi
+    
+    control_ensure_dirs
+    
+    # Validate command against policy
+    local policy_result
+    policy_result=$(control_validate_command "$command")
+    
+    if [[ "$policy_result" == "FORBIDDEN" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Command rejected by policy engine (forbidden pattern)"
+        control_log_action "propose" "0" "rejected" "$template" "reason=forbidden"
+        return 1
+    fi
+    
+    if [[ "$policy_result" == "NOT_ALLOWED" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Command not in allowed whitelist"
+        echo "Only safe, read-only commands are permitted."
+        control_log_action "propose" "0" "rejected" "$template" "reason=not_allowed"
+        return 1
+    fi
+    
+    # Get next ID
+    local id
+    id=$(jq -r '.next_id' "$CONTROL_PROPOSALS_FILE" 2>/dev/null || echo "1")
+    
+    # Assess risk
+    local risk_level
+    risk_level=$(control_assess_risk "$command")
+    
+    # Create proposal
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    local tmp_file
+    tmp_file=$(mktemp)
+    
+    jq --argjson id "$id" \
+       --arg desc "$description" \
+       --arg cmd "$command" \
+       --arg template "$template" \
+       --arg risk "$risk_level" \
+       --arg ts "$timestamp" \
+       '.proposals += [{
+           id: $id,
+           description: $desc,
+           command: $cmd,
+           sandbox_template: $template,
+           risk_level: $risk,
+           status: "pending",
+           created_at: $ts
+       }] | .next_id = ($id + 1)' \
+       "$CONTROL_PROPOSALS_FILE" > "$tmp_file" 2>/dev/null
+    
+    mv "$tmp_file" "$CONTROL_PROPOSALS_FILE"
+    chmod 664 "$CONTROL_PROPOSALS_FILE" 2>/dev/null || true
+    
+    control_log_action "propose" "$id" "created" "$template"
+    
+    echo -e "${CARINA_CYAN}Proposal created:${NC}"
+    echo ""
+    echo -e "  [$id] $description"
+    echo -e "       Command: $command"
+    echo -e "       Risk: ${risk_level^^}"
+    echo -e "       Sandbox: $template"
+    echo ""
+    echo -e "Use: ${CARINA_CYAN}carina control approve $id${NC}"
+}
+
+cmd_control_list() {
+    local status_filter="${1:-all}"
+    
+    control_ensure_dirs
+    
+    echo -e "${CARINA_CYAN}CARINA Control${NC} - Proposed Actions"
+    echo -e "${CARINA_MUTED}=================================${NC}"
+    echo ""
+    
+    local count
+    count=$(jq '.proposals | length' "$CONTROL_PROPOSALS_FILE" 2>/dev/null || echo "0")
+    
+    if [[ "$count" -eq 0 ]]; then
+        echo "No proposals"
+        return 0
+    fi
+    
+    if [[ "$status_filter" == "all" ]]; then
+        jq -r '.proposals[] | "[\(.id)] \(.description)\n     Command: \(.command)\n     Risk: \(.risk_level | ascii_upcase)\n     Sandbox: \(.sandbox_template)\n     Status: \(.status)\n"' "$CONTROL_PROPOSALS_FILE" 2>/dev/null
+    else
+        jq -r --arg status "$status_filter" '.proposals[] | select(.status == $status) | "[\(.id)] \(.description)\n     Command: \(.command)\n     Risk: \(.risk_level | ascii_upcase)\n     Sandbox: \(.sandbox_template)\n     Status: \(.status)\n"' "$CONTROL_PROPOSALS_FILE" 2>/dev/null
+    fi
+    
+    echo ""
+    echo -e "Use: ${CARINA_CYAN}carina control approve <id>${NC}"
+}
+
+cmd_control_approve() {
+    local id="$1"
+    
+    if [[ -z "$id" ]]; then
+        echo "Usage: carina control approve <id>"
+        return 1
+    fi
+    
+    control_ensure_dirs
+    
+    # Get proposal
+    local proposal
+    proposal=$(jq -r --argjson id "$id" '.proposals[] | select(.id == $id)' "$CONTROL_PROPOSALS_FILE" 2>/dev/null)
+    
+    if [[ -z "$proposal" ]] || [[ "$proposal" == "null" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Proposal $id not found"
+        control_log_action "approve" "$id" "not_found"
+        return 1
+    fi
+    
+    # Check status
+    local status
+    status=$(echo "$proposal" | jq -r '.status')
+    if [[ "$status" != "pending" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Proposal $id is not pending (status: $status)"
+        control_log_action "approve" "$id" "invalid_status"
+        return 1
+    fi
+    
+    # Extract details
+    local command template description
+    command=$(echo "$proposal" | jq -r '.command')
+    template=$(echo "$proposal" | jq -r '.sandbox_template')
+    description=$(echo "$proposal" | jq -r '.description')
+    
+    # Re-validate command (defense in depth)
+    local policy_result
+    policy_result=$(control_validate_command "$command")
+    
+    if [[ "$policy_result" != "ALLOWED" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Policy rejected on re-validation"
+        
+        # Update status to rejected
+        local tmp_file
+        tmp_file=$(mktemp)
+        jq --argjson id "$id" '(.proposals[] | select(.id == $id)).status = "rejected"' "$CONTROL_PROPOSALS_FILE" > "$tmp_file"
+        mv "$tmp_file" "$CONTROL_PROPOSALS_FILE"
+        
+        control_log_action "approve" "$id" "policy_rejected" "$template"
+        return 1
+    fi
+    
+    echo -e "Approving proposal $id: ${CARINA_CYAN}$description${NC}"
+    echo ""
+    
+    # Update status to approved
+    local tmp_file
+    tmp_file=$(mktemp)
+    jq --argjson id "$id" '(.proposals[] | select(.id == $id)).status = "approved"' "$CONTROL_PROPOSALS_FILE" > "$tmp_file"
+    mv "$tmp_file" "$CONTROL_PROPOSALS_FILE"
+    
+    control_log_action "approve" "$id" "approved" "$template"
+    
+    # SECURITY: Execute ONLY via sandbox
+    echo "Spawning sandbox..."
+    
+    # Create sandbox with TTL
+    local sandbox_output
+    sandbox_output=$(cmd_sandbox_up "$template" --ttl 5m 2>&1)
+    
+    # Extract sandbox name
+    local sandbox_name
+    sandbox_name=$(echo "$sandbox_output" | grep 'Sandbox started:' | awk '{print $3}' | head -1)
+    
+    if [[ -z "$sandbox_name" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Failed to create sandbox"
+        
+        tmp_file=$(mktemp)
+        jq --argjson id "$id" '(.proposals[] | select(.id == $id)).status = "failed"' "$CONTROL_PROPOSALS_FILE" > "$tmp_file"
+        mv "$tmp_file" "$CONTROL_PROPOSALS_FILE"
+        
+        control_log_action "execute" "$id" "sandbox_failed" "$template"
+        return 1
+    fi
+    
+    echo "Executing command in sandbox $sandbox_name..."
+    echo ""
+    
+    # Execute command inside sandbox
+    local result exit_code
+    result=$(cmd_sandbox_exec "$sandbox_name" $command 2>&1)
+    exit_code=$?
+    
+    echo -e "${CARINA_TEXT}Result:${NC}"
+    echo "$result"
+    echo ""
+    
+    # Destroy sandbox
+    echo "Destroying sandbox..."
+    cmd_sandbox_down "$sandbox_name" --force 2>/dev/null || true
+    
+    # Update status
+    if [[ $exit_code -eq 0 ]]; then
+        tmp_file=$(mktemp)
+        jq --argjson id "$id" '(.proposals[] | select(.id == $id)).status = "executed"' "$CONTROL_PROPOSALS_FILE" > "$tmp_file"
+        mv "$tmp_file" "$CONTROL_PROPOSALS_FILE"
+        
+        control_log_action "execute" "$id" "success" "$template" "result=success"
+        echo -e "${CARINA_CYAN}Sandbox destroyed.${NC}"
+    else
+        tmp_file=$(mktemp)
+        jq --argjson id "$id" '(.proposals[] | select(.id == $id)).status = "failed"' "$CONTROL_PROPOSALS_FILE" > "$tmp_file"
+        mv "$tmp_file" "$CONTROL_PROPOSALS_FILE"
+        
+        control_log_action "execute" "$id" "failed" "$template" "result=failed exit_code=$exit_code"
+        echo "Sandbox destroyed. (command failed with exit code $exit_code)"
+    fi
+    
+    return $exit_code
+}
+
+cmd_control_reject() {
+    local id="$1"
+    local reason="${2:-User rejected}"
+    
+    if [[ -z "$id" ]]; then
+        echo "Usage: carina control reject <id> [reason]"
+        return 1
+    fi
+    
+    control_ensure_dirs
+    
+    # Get proposal
+    local proposal
+    proposal=$(jq -r --argjson id "$id" '.proposals[] | select(.id == $id)' "$CONTROL_PROPOSALS_FILE" 2>/dev/null)
+    
+    if [[ -z "$proposal" ]] || [[ "$proposal" == "null" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Proposal $id not found"
+        control_log_action "reject" "$id" "not_found"
+        return 1
+    fi
+    
+    # Check status
+    local status
+    status=$(echo "$proposal" | jq -r '.status')
+    if [[ "$status" != "pending" ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Proposal $id is not pending (status: $status)"
+        control_log_action "reject" "$id" "invalid_status"
+        return 1
+    fi
+    
+    # Update status
+    local tmp_file
+    tmp_file=$(mktemp)
+    jq --argjson id "$id" '(.proposals[] | select(.id == $id)).status = "rejected"' "$CONTROL_PROPOSALS_FILE" > "$tmp_file"
+    mv "$tmp_file" "$CONTROL_PROPOSALS_FILE"
+    
+    control_log_action "reject" "$id" "rejected"
+    
+    echo -e "Proposal $id rejected: $reason"
+}
+
+cmd_control_clear() {
+    control_ensure_dirs
+    
+    local tmp_file
+    tmp_file=$(mktemp)
+    jq '.proposals = [.proposals[] | select(.status == "pending")]' "$CONTROL_PROPOSALS_FILE" > "$tmp_file"
+    mv "$tmp_file" "$CONTROL_PROPOSALS_FILE"
+    chmod 664 "$CONTROL_PROPOSALS_FILE" 2>/dev/null || true
+    
+    control_log_action "clear" "all" "cleared"
+    
+    echo "Cleared completed and rejected proposals"
+}
+
+cmd_control_help() {
+    echo -e "${CARINA_CYAN}CARINA Control${NC} - AI Advisory & Execution"
+    echo ""
+    echo -e "${CARINA_TEXT}Usage:${NC} carina control <command>"
+    echo ""
+    echo -e "${CARINA_TEXT}Commands:${NC}"
+    echo -e "  ${CARINA_CYAN}propose${NC} <desc> <cmd> [template]  Create a new proposal"
+    echo -e "  ${CARINA_CYAN}list${NC} [status]                    List proposals"
+    echo -e "  ${CARINA_CYAN}approve${NC} <id>                     Approve and execute proposal"
+    echo -e "  ${CARINA_CYAN}reject${NC} <id> [reason]             Reject a proposal"
+    echo -e "  ${CARINA_CYAN}clear${NC}                            Clear completed proposals"
+    echo ""
+    echo -e "${CARINA_TEXT}Security:${NC}"
+    echo "  - All execution occurs inside sandboxes"
+    echo "  - Commands are validated against policy whitelist"
+    echo "  - No direct host modification allowed"
+    echo "  - All actions are logged to /var/log/carina-control.log"
+    echo ""
+    echo -e "${CARINA_TEXT}Example:${NC}"
+    echo "  carina control propose \"Check Arduino version\" \"arduino-cli version\""
+    echo "  carina control approve 1"
+    echo ""
+}
+
+# ============================================================================
 # HELP
 # ============================================================================
 
@@ -791,6 +1221,7 @@ cmd_help() {
     echo -e "  ${CARINA_CYAN}gui${NC} <cmd>           Enable/disable graphical interface"
     echo -e "  ${CARINA_CYAN}sandbox${NC} <cmd>       Manage sandbox environments"
     echo -e "  ${CARINA_CYAN}missionlab${NC} <cmd>    Embedded & robotics development"
+    echo -e "  ${CARINA_CYAN}control${NC} <cmd>       AI advisory & sandboxed execution"
     echo -e "  ${CARINA_CYAN}version${NC}             Show version"
     echo -e "  ${CARINA_CYAN}help${NC}                Show this help"
     echo ""
@@ -813,6 +1244,13 @@ cmd_help() {
     echo -e "${CARINA_TEXT}MissionLab commands:${NC}"
     echo "  missionlab status   Check toolchain and access"
     echo "  missionlab devices  Detect connected devices"
+    echo ""
+    echo -e "${CARINA_TEXT}Control commands:${NC}"
+    echo "  control propose     Create a new proposal"
+    echo "  control list        List proposals"
+    echo "  control approve     Approve and execute"
+    echo "  control reject      Reject a proposal"
+    echo "  control clear       Clear completed proposals"
     echo ""
 }
 
@@ -906,6 +1344,35 @@ main() {
                 *)
                     echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown missionlab command: $subcmd"
                     cmd_missionlab_help
+                    exit 1
+                    ;;
+            esac
+            ;;
+        control)
+            local subcmd="${1:-help}"
+            shift || true
+            case "$subcmd" in
+                propose)
+                    cmd_control_propose "$@"
+                    ;;
+                list)
+                    cmd_control_list "$@"
+                    ;;
+                approve)
+                    cmd_control_approve "$@"
+                    ;;
+                reject)
+                    cmd_control_reject "$@"
+                    ;;
+                clear)
+                    cmd_control_clear
+                    ;;
+                help|--help|-h)
+                    cmd_control_help
+                    ;;
+                *)
+                    echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown control command: $subcmd"
+                    cmd_control_help
                     exit 1
                     ;;
             esac
