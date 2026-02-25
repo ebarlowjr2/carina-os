@@ -129,7 +129,7 @@ You don't need to be a space engineer — just someone who wants Linux to behave
 
 ## Philosophy Note
 
-This project is intentionally not vibe-coded. Changes should be understandable, reviewable, and reversible.
+Changes should be understandable, reviewable, and reversible.
 
 CARINA is meant to be boring in the right places and powerful where it matters.
 
