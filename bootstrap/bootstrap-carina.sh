@@ -283,6 +283,88 @@ apply_identity() {
     log "Ubuntu branding removed"
 }
 
+setup_gnome_branding() {
+    log "Setting up GNOME desktop branding..."
+    
+    # Install wallpaper to system location
+    mkdir -p /usr/share/backgrounds/carina
+    if [[ -f "$REPO_DIR/branding/wallpapers/carina-void.jpg" ]]; then
+        cp "$REPO_DIR/branding/wallpapers/carina-void.jpg" /usr/share/backgrounds/carina/
+        log "Wallpaper installed to /usr/share/backgrounds/carina/"
+    fi
+    
+    # Create GNOME background XML for wallpaper picker
+    mkdir -p /usr/share/gnome-background-properties
+    cat > /usr/share/gnome-background-properties/carina.xml << 'BGXML'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE wallpapers SYSTEM "gnome-wp-list.dtd">
+<wallpapers>
+  <wallpaper deleted="false">
+    <name>CARINA Linux</name>
+    <filename>/usr/share/backgrounds/carina/carina-void.jpg</filename>
+    <options>zoom</options>
+    <shade_type>solid</shade_type>
+    <pcolor>#0D0D0D</pcolor>
+    <scolor>#0D0D0D</scolor>
+  </wallpaper>
+</wallpapers>
+BGXML
+    log "GNOME wallpaper picker entry created"
+    
+    # Set up dconf profile for system-wide defaults
+    mkdir -p /etc/dconf/profile
+    cat > /etc/dconf/profile/user << 'DCONF_PROFILE'
+user-db:user
+system-db:carina
+DCONF_PROFILE
+    log "dconf profile created"
+    
+    # Create dconf database with CARINA defaults
+    mkdir -p /etc/dconf/db/carina.d
+    cat > /etc/dconf/db/carina.d/00-background << 'DCONF_BG'
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/carina/carina-void.jpg'
+picture-uri-dark='file:///usr/share/backgrounds/carina/carina-void.jpg'
+picture-options='zoom'
+primary-color='#0D0D0D'
+secondary-color='#0D0D0D'
+
+[org/gnome/desktop/screensaver]
+picture-uri='file:///usr/share/backgrounds/carina/carina-void.jpg'
+picture-options='zoom'
+primary-color='#0D0D0D'
+secondary-color='#0D0D0D'
+DCONF_BG
+    log "dconf background settings created"
+    
+    # Lock the background settings (optional - comment out if users should be able to change)
+    # mkdir -p /etc/dconf/db/carina.d/locks
+    # echo "/org/gnome/desktop/background/picture-uri" > /etc/dconf/db/carina.d/locks/background
+    
+    # Update dconf database
+    if command -v dconf &>/dev/null; then
+        dconf update 2>/dev/null || true
+        log "dconf database updated"
+    else
+        log "WARN: dconf not available, will be applied on next boot with GUI"
+    fi
+    
+    # Also set GDM (login screen) background if GDM is installed
+    if [[ -d /etc/gdm3 ]]; then
+        mkdir -p /etc/dconf/db/gdm.d
+        cat > /etc/dconf/db/gdm.d/00-carina-background << 'GDM_BG'
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/carina/carina-void.jpg'
+picture-options='zoom'
+primary-color='#0D0D0D'
+GDM_BG
+        dconf update 2>/dev/null || true
+        log "GDM login screen background configured"
+    fi
+    
+    log "GNOME desktop branding configured"
+}
+
 setup_firstboot() {
     log "Setting up first-boot system..."
     
@@ -334,6 +416,7 @@ main() {
     install_podman
     install_cli
     apply_identity
+    setup_gnome_branding
     setup_firstboot
     apply_core_profile
     
