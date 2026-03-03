@@ -1074,7 +1074,7 @@ cmd_control_approve() {
     
     # Create sandbox with TTL
     local sandbox_output
-    sandbox_output=$(cmd_sandbox_up "$template" --ttl 5m 2>&1)
+    sandbox_output=$(cmd_sandbox_up "$template" --ttl 5m 2>&1) || true
     
     # Extract sandbox name
     local sandbox_name
@@ -1095,9 +1095,8 @@ cmd_control_approve() {
     echo ""
     
     # Execute command inside sandbox
-    local result exit_code
-    result=$(cmd_sandbox_exec "$sandbox_name" $command 2>&1)
-    exit_code=$?
+    local result exit_code=0
+    result=$(cmd_sandbox_exec "$sandbox_name" $command 2>&1) || exit_code=$?
     
     echo -e "${CARINA_TEXT}Result:${NC}"
     echo "$result"

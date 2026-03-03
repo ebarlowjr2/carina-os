@@ -1,8 +1,8 @@
 [Desktop Entry]
 Name=CARINA System Status
 Comment=System health and readiness checks
-Exec=xfce4-terminal --command="carina doctor"
+Exec=xfce4-terminal --hold --command="carina doctor"
 Icon=status
-Terminal=true
+Terminal=false
 Type=Application
 Categories=System;

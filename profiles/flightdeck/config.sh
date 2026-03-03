@@ -102,4 +102,70 @@ echo "Updating desktop database..."
 update-desktop-database /usr/share/applications 2>/dev/null || true
 gtk-update-icon-cache /usr/share/icons/hicolor 2>/dev/null || true
 
+# Create desktop icons in /etc/skel/Desktop for new users
+echo "Setting up desktop icons for new users..."
+mkdir -p /etc/skel/Desktop
+if [[ -d "${CARINA_BRANDING}/desktop" ]]; then
+    for desktop_file in "${CARINA_BRANDING}/desktop/"*.desktop; do
+        if [[ -f "$desktop_file" ]]; then
+            cp "$desktop_file" /etc/skel/Desktop/
+            chmod +x "/etc/skel/Desktop/$(basename "$desktop_file")"
+        fi
+    done
+    echo "Desktop icons staged for new users"
+fi
+
+# Also add a CARINA Terminal desktop icon
+cat > /etc/skel/Desktop/carina-terminal.desktop << 'TERMINAL_DESKTOP'
+[Desktop Entry]
+Name=CARINA Terminal
+Comment=Open a terminal with CARINA CLI
+Exec=xfce4-terminal
+Icon=utilities-terminal
+Terminal=false
+Type=Application
+Categories=System;TerminalEmulator;
+TERMINAL_DESKTOP
+chmod +x /etc/skel/Desktop/carina-terminal.desktop
+
+# Create a script to add desktop icons for existing users
+cat > /usr/local/bin/carina-setup-desktop-icons << 'SETUP_ICONS'
+#!/bin/bash
+# Setup CARINA desktop icons for the current user
+
+DESKTOP_DIR="${HOME}/Desktop"
+BRANDING_DIR="/opt/carina/branding/desktop"
+
+mkdir -p "$DESKTOP_DIR"
+
+if [[ -d "$BRANDING_DIR" ]]; then
+    for desktop_file in "$BRANDING_DIR"/*.desktop; do
+        if [[ -f "$desktop_file" ]]; then
+            cp "$desktop_file" "$DESKTOP_DIR/"
+            chmod +x "$DESKTOP_DIR/$(basename "$desktop_file")"
+            # Mark as trusted for GNOME/XFCE
+            gio set "$DESKTOP_DIR/$(basename "$desktop_file")" metadata::trusted true 2>/dev/null || true
+        fi
+    done
+fi
+
+# Add terminal icon
+cat > "$DESKTOP_DIR/carina-terminal.desktop" << 'EOF'
+[Desktop Entry]
+Name=CARINA Terminal
+Comment=Open a terminal with CARINA CLI
+Exec=xfce4-terminal
+Icon=utilities-terminal
+Terminal=false
+Type=Application
+Categories=System;TerminalEmulator;
+EOF
+chmod +x "$DESKTOP_DIR/carina-terminal.desktop"
+gio set "$DESKTOP_DIR/carina-terminal.desktop" metadata::trusted true 2>/dev/null || true
+
+echo "CARINA desktop icons installed to $DESKTOP_DIR"
+SETUP_ICONS
+chmod +x /usr/local/bin/carina-setup-desktop-icons
+
 echo "FlightDeck profile configuration complete."
+echo "Run 'carina-setup-desktop-icons' to add desktop icons for existing users."

@@ -214,15 +214,10 @@ approve_and_execute() {
     
     # Create sandbox with TTL
     local sandbox_name
-    sandbox_name=$(carina sandbox up "$template" --ttl 5m 2>&1) || {
-        echo "Error: Failed to create sandbox"
-        update_proposal_status "$id" "failed"
-        log_action "execute" "$id" "sandbox_failed" "$template"
-        return 1
-    }
+    sandbox_name=$(carina sandbox up "$template" --ttl 5m 2>&1) || true
     
     # Extract sandbox name from output
-    sandbox_name=$(echo "$sandbox_name" | grep -oP 'Sandbox \K[a-z]+-[a-zA-Z0-9]+' | head -1)
+    sandbox_name=$(echo "$sandbox_name" | grep 'Sandbox started:' | awk '{print $NF}' | head -1)
     
     if [[ -z "$sandbox_name" ]]; then
         echo "Error: Could not determine sandbox name"
@@ -237,10 +232,9 @@ approve_and_execute() {
     # Execute command inside sandbox
     # SECURITY: Command runs ONLY inside container, not on host
     local result
-    local exit_code
+    local exit_code=0
     
-    result=$(carina sandbox exec "$sandbox_name" $command 2>&1)
-    exit_code=$?
+    result=$(carina sandbox exec "$sandbox_name" $command 2>&1) || exit_code=$?
     
     echo "Result:"
     echo "$result"
@@ -248,7 +242,7 @@ approve_and_execute() {
     
     # Destroy sandbox
     echo "Destroying sandbox..."
-    carina sandbox destroy "$sandbox_name" --force 2>/dev/null || true
+    carina sandbox down "$sandbox_name" --force 2>/dev/null || true
     
     # Update status based on result
     if [[ $exit_code -eq 0 ]]; then
