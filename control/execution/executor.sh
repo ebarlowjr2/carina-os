@@ -248,7 +248,7 @@ approve_and_execute() {
     
     # Destroy sandbox
     echo "Destroying sandbox..."
-    carina sandbox destroy "$sandbox_name" --force 2>/dev/null || true
+    carina sandbox down "$sandbox_name" --force 2>/dev/null || true
     
     # Update status based on result
     if [[ $exit_code -eq 0 ]]; then

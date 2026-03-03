@@ -3,6 +3,6 @@ Name=CARINA System Status
 Comment=System health and readiness checks
 Exec=xfce4-terminal --command="carina doctor"
 Icon=status
-Terminal=true
+Terminal=false
 Type=Application
 Categories=System;

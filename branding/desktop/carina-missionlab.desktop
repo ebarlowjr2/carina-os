@@ -3,6 +3,6 @@ Name=CARINA MissionLab
 Comment=Embedded and robotics tooling
 Exec=xfce4-terminal --command="carina missionlab status"
 Icon=missionlab
-Terminal=true
+Terminal=false
 Type=Application
 Categories=Development;Engineering;
