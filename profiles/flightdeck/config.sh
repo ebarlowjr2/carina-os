@@ -45,13 +45,13 @@ cat > /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml << 'X
     <property name="screen0" type="empty">
       <property name="monitorVNC-0" type="empty">
         <property name="workspace0" type="empty">
-          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux.png"/>
+          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux-banner.png"/>
           <property name="image-style" type="int" value="5"/>
         </property>
       </property>
       <property name="monitor0" type="empty">
         <property name="workspace0" type="empty">
-          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux.png"/>
+          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux-banner.png"/>
           <property name="image-style" type="int" value="5"/>
         </property>
       </property>
@@ -59,22 +59,22 @@ cat > /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml << 'X
         <property name="workspace0" type="empty">
           <property name="color-style" type="int" value="0"/>
           <property name="image-style" type="int" value="5"/>
-          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux.png"/>
+          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux-banner.png"/>
         </property>
         <property name="workspace1" type="empty">
           <property name="color-style" type="int" value="0"/>
           <property name="image-style" type="int" value="5"/>
-          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux.png"/>
+          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux-banner.png"/>
         </property>
         <property name="workspace2" type="empty">
           <property name="color-style" type="int" value="0"/>
           <property name="image-style" type="int" value="5"/>
-          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux.png"/>
+          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux-banner.png"/>
         </property>
         <property name="workspace3" type="empty">
           <property name="color-style" type="int" value="0"/>
           <property name="image-style" type="int" value="5"/>
-          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux.png"/>
+          <property name="last-image" type="string" value="/usr/share/backgrounds/carina/carina-linux-banner.png"/>
         </property>
       </property>
     </property>
