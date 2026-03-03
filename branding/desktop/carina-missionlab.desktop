@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=CARINA MissionLab
 Comment=Embedded and robotics tooling
-Exec=xfce4-terminal --command="carina missionlab status"
+Exec=xfce4-terminal --hold --command="carina missionlab status"
 Icon=missionlab
 Terminal=false
 Type=Application

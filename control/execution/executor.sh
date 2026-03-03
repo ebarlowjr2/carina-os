@@ -222,7 +222,7 @@ approve_and_execute() {
     }
     
     # Extract sandbox name from output
-    sandbox_name=$(echo "$sandbox_name" | grep -oP 'Sandbox \K[a-z]+-[a-zA-Z0-9]+' | head -1)
+    sandbox_name=$(echo "$sandbox_name" | grep 'Sandbox started:' | awk '{print $NF}' | head -1)
     
     if [[ -z "$sandbox_name" ]]; then
         echo "Error: Could not determine sandbox name"
