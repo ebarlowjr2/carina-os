@@ -288,9 +288,12 @@ setup_gnome_branding() {
     
     # Install wallpaper to system location
     mkdir -p /usr/share/backgrounds/carina
-    if [[ -f "$REPO_DIR/branding/wallpapers/carina-void.jpg" ]]; then
-        cp "$REPO_DIR/branding/wallpapers/carina-void.jpg" /usr/share/backgrounds/carina/
+    if [[ -f "$REPO_DIR/branding/wallpapers/carina-linux-banner.png" ]]; then
+        cp "$REPO_DIR/branding/wallpapers/carina-linux-banner.png" /usr/share/backgrounds/carina/
         log "Wallpaper installed to /usr/share/backgrounds/carina/"
+    elif [[ -f "$REPO_DIR/branding/wallpapers/carina-void.jpg" ]]; then
+        cp "$REPO_DIR/branding/wallpapers/carina-void.jpg" /usr/share/backgrounds/carina/
+        log "Fallback wallpaper installed to /usr/share/backgrounds/carina/"
     fi
     
     # Create GNOME background XML for wallpaper picker
@@ -301,7 +304,7 @@ setup_gnome_branding() {
 <wallpapers>
   <wallpaper deleted="false">
     <name>CARINA Linux</name>
-    <filename>/usr/share/backgrounds/carina/carina-void.jpg</filename>
+    <filename>/usr/share/backgrounds/carina/carina-linux-banner.png</filename>
     <options>zoom</options>
     <shade_type>solid</shade_type>
     <pcolor>#0D0D0D</pcolor>
@@ -323,14 +326,14 @@ DCONF_PROFILE
     mkdir -p /etc/dconf/db/carina.d
     cat > /etc/dconf/db/carina.d/00-background << 'DCONF_BG'
 [org/gnome/desktop/background]
-picture-uri='file:///usr/share/backgrounds/carina/carina-void.jpg'
-picture-uri-dark='file:///usr/share/backgrounds/carina/carina-void.jpg'
+picture-uri='file:///usr/share/backgrounds/carina/carina-linux-banner.png'
+picture-uri-dark='file:///usr/share/backgrounds/carina/carina-linux-banner.png'
 picture-options='zoom'
 primary-color='#0D0D0D'
 secondary-color='#0D0D0D'
 
 [org/gnome/desktop/screensaver]
-picture-uri='file:///usr/share/backgrounds/carina/carina-void.jpg'
+picture-uri='file:///usr/share/backgrounds/carina/carina-linux-banner.png'
 picture-options='zoom'
 primary-color='#0D0D0D'
 secondary-color='#0D0D0D'
@@ -354,7 +357,7 @@ DCONF_BG
         mkdir -p /etc/dconf/db/gdm.d
         cat > /etc/dconf/db/gdm.d/00-carina-background << 'GDM_BG'
 [org/gnome/desktop/background]
-picture-uri='file:///usr/share/backgrounds/carina/carina-void.jpg'
+picture-uri='file:///usr/share/backgrounds/carina/carina-linux-banner.png'
 picture-options='zoom'
 primary-color='#0D0D0D'
 GDM_BG
