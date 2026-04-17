@@ -193,7 +193,12 @@ cmd_profile_apply() {
             if [[ ${#to_install[@]} -gt 0 ]]; then
                 echo "  Installing ${#to_install[@]} packages (${#packages[@]} total, $((${#packages[@]} - ${#to_install[@]})) already installed)..."
                 apt-get update -qq
-                apt-get install -y -qq "${to_install[@]}" || echo "  Warning: Some packages may have failed to install"
+                if ! apt-get install -y -qq "${to_install[@]}" 2>/dev/null; then
+                    echo "  Batch install failed, falling back to individual packages..."
+                    for pkg in "${to_install[@]}"; do
+                        apt-get install -y -qq "$pkg" || echo "  Warning: Failed to install $pkg"
+                    done
+                fi
             else
                 echo "  All ${#packages[@]} packages already installed, skipping."
             fi
