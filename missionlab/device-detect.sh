@@ -61,42 +61,18 @@ detect_serial_ports() {
     
     local found=0
     
-    # Check /dev/ttyUSB* devices
-    for port in /dev/ttyUSB*; do
+    # Check /dev/ttyUSB* and /dev/ttyACM* devices
+    for port in /dev/ttyUSB* /dev/ttyACM*; do
         if [[ -e "$port" ]]; then
             found=1
             local info=""
             
-            # Try to get device info from udevadm
-            local vendor=$(udevadm info -q property -n "$port" 2>/dev/null | grep "ID_VENDOR_ID=" | cut -d= -f2)
-            local product=$(udevadm info -q property -n "$port" 2>/dev/null | grep "ID_MODEL_ID=" | cut -d= -f2)
-            local model=$(udevadm info -q property -n "$port" 2>/dev/null | grep "ID_MODEL=" | cut -d= -f2)
-            
-            if [[ -n "$vendor" ]]; then
-                local key="${vendor}:${product}"
-                if [[ -n "${PRODUCT_NAMES[$key]}" ]]; then
-                    info="${PRODUCT_NAMES[$key]}"
-                elif [[ -n "${VENDOR_NAMES[$vendor]}" ]]; then
-                    info="${VENDOR_NAMES[$vendor]}"
-                    [[ -n "$model" ]] && info="$info ($model)"
-                else
-                    info="$model"
-                fi
-            fi
-            
-            echo -e "  ${CARINA_TEXT}$port${NC} ${CARINA_MUTED}${info}${NC}"
-        fi
-    done
-    
-    # Check /dev/ttyACM* devices (CDC ACM)
-    for port in /dev/ttyACM*; do
-        if [[ -e "$port" ]]; then
-            found=1
-            local info=""
-            
-            local vendor=$(udevadm info -q property -n "$port" 2>/dev/null | grep "ID_VENDOR_ID=" | cut -d= -f2)
-            local product=$(udevadm info -q property -n "$port" 2>/dev/null | grep "ID_MODEL_ID=" | cut -d= -f2)
-            local model=$(udevadm info -q property -n "$port" 2>/dev/null | grep "ID_MODEL=" | cut -d= -f2)
+            # Single udevadm call per device instead of 3 separate calls
+            local udev_props
+            udev_props=$(udevadm info -q property -n "$port" 2>/dev/null)
+            local vendor=$(echo "$udev_props" | grep "ID_VENDOR_ID=" | cut -d= -f2)
+            local product=$(echo "$udev_props" | grep "ID_MODEL_ID=" | cut -d= -f2)
+            local model=$(echo "$udev_props" | grep "ID_MODEL=" | cut -d= -f2)
             
             if [[ -n "$vendor" ]]; then
                 local key="${vendor}:${product}"

@@ -1,7 +1,7 @@
 [Unit]
 Description=CARINA OS First Boot Configuration
-After=network-online.target
-Wants=network-online.target
+After=network.target
+Wants=network.target
 ConditionPathExists=!/etc/carina/firstboot.done
 
 [Service]

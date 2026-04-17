@@ -172,14 +172,32 @@ cmd_profile_apply() {
     
     if [[ -f "$profile_dir/packages.txt" ]]; then
         echo "Installing packages..."
-        apt-get update -qq
+        # Collect all packages into a single list for batch installation
+        local packages=()
         while IFS= read -r package || [[ -n "$package" ]]; do
             package=$(echo "$package" | tr -d '[:space:]')
             if [[ -n "$package" ]] && [[ ! "$package" =~ ^# ]]; then
-                echo "  Installing: $package"
-                apt-get install -y -qq "$package" || echo "  Warning: Failed to install $package"
+                packages+=("$package")
             fi
         done < "$profile_dir/packages.txt"
+        
+        if [[ ${#packages[@]} -gt 0 ]]; then
+            # Filter out already-installed packages to skip unnecessary work
+            local to_install=()
+            for pkg in "${packages[@]}"; do
+                if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+                    to_install+=("$pkg")
+                fi
+            done
+            
+            if [[ ${#to_install[@]} -gt 0 ]]; then
+                echo "  Installing ${#to_install[@]} packages (${#packages[@]} total, $((${#packages[@]} - ${#to_install[@]})) already installed)..."
+                apt-get update -qq
+                apt-get install -y -qq "${to_install[@]}" || echo "  Warning: Some packages may have failed to install"
+            else
+                echo "  All ${#packages[@]} packages already installed, skipping."
+            fi
+        fi
         echo "Packages installed."
     fi
     
@@ -206,14 +224,14 @@ cmd_gui_enable() {
     else
         echo "Installing GUI packages..."
         apt-get update -qq
-        apt-get install -y -qq ubuntu-desktop-minimal gdm3 xrdp
+        apt-get install -y -qq xfce4 xfce4-goodies lightdm lightdm-gtk-greeter xrdp
     fi
     
     echo "Setting graphical target..."
     systemctl set-default graphical.target
     
     echo "Enabling display manager..."
-    systemctl enable gdm3 2>/dev/null || true
+    systemctl enable lightdm 2>/dev/null || true
     
     echo ""
     echo -e "${CARINA_CYAN}GUI enabled.${NC} Reboot to start graphical interface."
@@ -232,8 +250,8 @@ cmd_gui_disable() {
     systemctl set-default multi-user.target
     
     echo "Stopping display manager..."
-    systemctl stop gdm3 2>/dev/null || true
-    systemctl disable gdm3 2>/dev/null || true
+    systemctl stop lightdm 2>/dev/null || systemctl stop gdm3 2>/dev/null || true
+    systemctl disable lightdm 2>/dev/null || systemctl disable gdm3 2>/dev/null || true
     
     echo ""
     echo -e "${CARINA_CYAN}GUI disabled.${NC} Reboot to apply changes."
@@ -462,10 +480,15 @@ cmd_sandbox_up() {
     
     local image_name="${SANDBOX_IMAGE_PREFIX}-${template}:latest"
     
-    echo -e "Building sandbox image: ${CARINA_CYAN}$template${NC}"
-    sandbox_log_action "BUILD" "template=$template image=$image_name"
-    
-    podman build -t "$image_name" -f "$template_dir/Containerfile" "$template_dir" >/dev/null 2>&1
+    # Only rebuild if image doesn't exist (cache sandbox images for faster startup)
+    if podman image exists "$image_name" 2>/dev/null; then
+        echo -e "Using cached sandbox image: ${CARINA_CYAN}$template${NC}"
+        sandbox_log_action "CACHE_HIT" "template=$template image=$image_name"
+    else
+        echo -e "Building sandbox image: ${CARINA_CYAN}$template${NC}"
+        sandbox_log_action "BUILD" "template=$template image=$image_name"
+        podman build -t "$image_name" -f "$template_dir/Containerfile" "$template_dir" >/dev/null 2>&1
+    fi
     
     echo -e "Starting sandbox: ${CARINA_CYAN}$sandbox_id${NC}"
     sandbox_log_action "START" "id=$sandbox_id template=$template ttl=${ttl_seconds}s"

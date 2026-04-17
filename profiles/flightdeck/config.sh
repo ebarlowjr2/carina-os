@@ -12,13 +12,11 @@ CARINA_BRANDING="/opt/carina/branding"
 
 echo "Configuring FlightDeck profile..."
 
-# Install XFCE desktop environment for xrdp compatibility
-# GNOME Shell doesn't work reliably with xrdp's virtual X server
-echo "Installing XFCE desktop environment..."
-apt-get install -y -qq xfce4 xfce4-goodies 2>/dev/null || true
+# XFCE and LightDM are installed via packages.txt (batch install)
+# No need to install them again here
 
-echo "Enabling GDM3 display manager..."
-systemctl enable gdm3 2>/dev/null || true
+echo "Enabling LightDM display manager..."
+systemctl enable lightdm 2>/dev/null || true
 
 echo "Enabling XRDP for remote desktop..."
 systemctl enable xrdp 2>/dev/null || true
