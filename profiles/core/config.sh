@@ -16,11 +16,17 @@ systemctl enable chrony 2>/dev/null || true
 systemctl start chrony 2>/dev/null || true
 
 echo "Configuring UFW firewall..."
-ufw --force reset
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow ssh
-ufw --force enable
+# Only reset and reconfigure if not already active with correct rules
+# Avoids dropping connections during re-bootstrap
+if ufw status 2>/dev/null | grep -q "Status: active"; then
+    echo "  UFW already active, verifying SSH rule..."
+    ufw allow ssh 2>/dev/null || true
+else
+    ufw default deny incoming
+    ufw default allow outgoing
+    ufw allow ssh
+    ufw --force enable
+fi
 
 echo "Setting sane sysctl defaults..."
 cat > /etc/sysctl.d/99-carina.conf << 'EOF'

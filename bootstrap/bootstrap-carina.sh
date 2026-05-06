@@ -61,7 +61,10 @@ create_directories() {
 
 install_base_packages() {
     log "Installing base packages..."
+    # Single apt-get update for the entire bootstrap (avoid redundant calls later)
     apt-get update -qq
+    # Combined base + core profile packages in a single apt-get call
+    # to avoid a second apt-get update + install cycle during profile apply
     apt-get install -y -qq \
         git \
         curl \
@@ -77,7 +80,9 @@ install_base_packages() {
         chrony \
         ufw \
         xxd \
-        dbus-x11
+        dbus-x11 \
+        rsyslog \
+        logrotate
     log "Base packages installed"
 }
 
@@ -89,6 +94,7 @@ install_podman() {
         return 0
     fi
     
+    # apt-get update already ran in install_base_packages, no need to repeat
     apt-get install -y -qq podman
     
     if command -v podman &>/dev/null; then
@@ -402,10 +408,19 @@ setup_firstboot() {
 apply_core_profile() {
     log "Applying core profile..."
     
-    if command -v carina &>/dev/null; then
+    # Run core profile config directly instead of through CLI to avoid
+    # a redundant apt-get update + package install cycle.
+    # Base packages from core/packages.txt overlap with install_base_packages()
+    # so we only need to run the config.sh portion.
+    local core_config="/opt/carina/profiles/core/config.sh"
+    if [[ -f "$core_config" ]]; then
+        log "Running core profile configuration..."
+        bash "$core_config"
+        log "Core profile configuration complete"
+    elif command -v carina &>/dev/null; then
         carina profile apply core
     else
-        log "WARN: CLI not available, skipping profile application"
+        log "WARN: Core profile config not available, skipping"
     fi
 }
 

@@ -172,14 +172,37 @@ cmd_profile_apply() {
     
     if [[ -f "$profile_dir/packages.txt" ]]; then
         echo "Installing packages..."
-        apt-get update -qq
+        # Collect all packages into a single list for batch installation
+        local packages=()
         while IFS= read -r package || [[ -n "$package" ]]; do
             package=$(echo "$package" | tr -d '[:space:]')
             if [[ -n "$package" ]] && [[ ! "$package" =~ ^# ]]; then
-                echo "  Installing: $package"
-                apt-get install -y -qq "$package" || echo "  Warning: Failed to install $package"
+                packages+=("$package")
             fi
         done < "$profile_dir/packages.txt"
+        
+        if [[ ${#packages[@]} -gt 0 ]]; then
+            # Filter out already-installed packages to skip unnecessary work
+            local to_install=()
+            for pkg in "${packages[@]}"; do
+                if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+                    to_install+=("$pkg")
+                fi
+            done
+            
+            if [[ ${#to_install[@]} -gt 0 ]]; then
+                echo "  Installing ${#to_install[@]} packages (${#packages[@]} total, $((${#packages[@]} - ${#to_install[@]})) already installed)..."
+                apt-get update -qq
+                if ! apt-get install -y -qq "${to_install[@]}" 2>/dev/null; then
+                    echo "  Batch install failed, falling back to individual packages..."
+                    for pkg in "${to_install[@]}"; do
+                        apt-get install -y -qq "$pkg" || echo "  Warning: Failed to install $pkg"
+                    done
+                fi
+            else
+                echo "  All ${#packages[@]} packages already installed, skipping."
+            fi
+        fi
         echo "Packages installed."
     fi
     
@@ -206,14 +229,14 @@ cmd_gui_enable() {
     else
         echo "Installing GUI packages..."
         apt-get update -qq
-        apt-get install -y -qq ubuntu-desktop-minimal gdm3 xrdp
+        apt-get install -y -qq xfce4 xfce4-goodies lightdm lightdm-gtk-greeter xrdp
     fi
     
     echo "Setting graphical target..."
     systemctl set-default graphical.target
     
     echo "Enabling display manager..."
-    systemctl enable gdm3 2>/dev/null || true
+    systemctl enable lightdm 2>/dev/null || true
     
     echo ""
     echo -e "${CARINA_CYAN}GUI enabled.${NC} Reboot to start graphical interface."
@@ -232,7 +255,9 @@ cmd_gui_disable() {
     systemctl set-default multi-user.target
     
     echo "Stopping display manager..."
+    systemctl stop lightdm 2>/dev/null || true
     systemctl stop gdm3 2>/dev/null || true
+    systemctl disable lightdm 2>/dev/null || true
     systemctl disable gdm3 2>/dev/null || true
     
     echo ""
@@ -408,6 +433,7 @@ cmd_sandbox_up() {
     local template=""
     local ttl="10m"
     local name=""
+    local rebuild=0
     
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -418,6 +444,10 @@ cmd_sandbox_up() {
             --name)
                 name="$2"
                 shift 2
+                ;;
+            --rebuild)
+                rebuild=1
+                shift
                 ;;
             -*)
                 echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown option: $1"
@@ -462,10 +492,19 @@ cmd_sandbox_up() {
     
     local image_name="${SANDBOX_IMAGE_PREFIX}-${template}:latest"
     
-    echo -e "Building sandbox image: ${CARINA_CYAN}$template${NC}"
-    sandbox_log_action "BUILD" "template=$template image=$image_name"
-    
-    podman build -t "$image_name" -f "$template_dir/Containerfile" "$template_dir" >/dev/null 2>&1
+    # Cache sandbox images for faster startup; use --rebuild to force a fresh build
+    if [[ $rebuild -eq 1 ]]; then
+        echo -e "Rebuilding sandbox image: ${CARINA_CYAN}$template${NC}"
+        sandbox_log_action "REBUILD" "template=$template image=$image_name"
+        podman build -t "$image_name" --no-cache -f "$template_dir/Containerfile" "$template_dir" >/dev/null 2>&1
+    elif podman image exists "$image_name" 2>/dev/null; then
+        echo -e "Using cached sandbox image: ${CARINA_CYAN}$template${NC}"
+        sandbox_log_action "CACHE_HIT" "template=$template image=$image_name"
+    else
+        echo -e "Building sandbox image: ${CARINA_CYAN}$template${NC}"
+        sandbox_log_action "BUILD" "template=$template image=$image_name"
+        podman build -t "$image_name" -f "$template_dir/Containerfile" "$template_dir" >/dev/null 2>&1
+    fi
     
     echo -e "Starting sandbox: ${CARINA_CYAN}$sandbox_id${NC}"
     sandbox_log_action "START" "id=$sandbox_id template=$template ttl=${ttl_seconds}s"
@@ -617,6 +656,7 @@ cmd_sandbox_help() {
     echo -e "${CARINA_TEXT}Options for 'up':${NC}"
     echo "  --ttl <duration>    Time to live (default: 10m)"
     echo "  --name <name>       Custom sandbox name"
+    echo "  --rebuild           Force rebuild of sandbox image (ignore cache)"
     echo ""
     echo -e "${CARINA_TEXT}Examples:${NC}"
     echo "  carina sandbox up python --ttl 30m"

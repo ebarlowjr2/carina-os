@@ -169,6 +169,7 @@ sandbox_up() {
     local template="$1"
     local ttl="${2:-10m}"
     local name="$3"
+    local rebuild="${4:-0}"
     
     check_podman || return 1
     ensure_dirs
@@ -198,10 +199,19 @@ sandbox_up() {
     
     local image_name="${IMAGE_PREFIX}-${template}:latest"
     
-    echo -e "Building sandbox image: ${CARINA_CYAN}$template${NC}"
-    log_action "BUILD" "template=$template image=$image_name"
-    
-    podman build -t "$image_name" -f "$template_dir/Containerfile" "$template_dir" >/dev/null 2>&1
+    # Cache sandbox images for faster startup; pass rebuild=1 to force a fresh build
+    if [[ "$rebuild" == "1" ]]; then
+        echo -e "Rebuilding sandbox image: ${CARINA_CYAN}$template${NC}"
+        log_action "REBUILD" "template=$template image=$image_name"
+        podman build -t "$image_name" --no-cache -f "$template_dir/Containerfile" "$template_dir" >/dev/null 2>&1
+    elif podman image exists "$image_name" 2>/dev/null; then
+        echo -e "Using cached sandbox image: ${CARINA_CYAN}$template${NC}"
+        log_action "CACHE_HIT" "template=$template image=$image_name"
+    else
+        echo -e "Building sandbox image: ${CARINA_CYAN}$template${NC}"
+        log_action "BUILD" "template=$template image=$image_name"
+        podman build -t "$image_name" -f "$template_dir/Containerfile" "$template_dir" >/dev/null 2>&1
+    fi
     
     echo -e "Starting sandbox: ${CARINA_CYAN}$sandbox_id${NC}"
     log_action "START" "id=$sandbox_id template=$template ttl=${ttl_seconds}s"
