@@ -1,9 +1,11 @@
 NAME="CARINA OS"
-PRETTY_NAME="CARINA OS (Core)"
+PRETTY_NAME="CARINA OS @CARINA_VERSION@ (Core)"
 ID=carina
-ID_LIKE=debian
-VERSION_ID="0.1"
-VERSION="0.1 (Core)"
+ID_LIKE="ubuntu debian"
+VERSION_ID="@CARINA_VERSION@"
+VERSION="@CARINA_VERSION@ (Core, based on Ubuntu @UBUNTU_VERSION_ID@)"
+VERSION_CODENAME=@UBUNTU_CODENAME@
+UBUNTU_CODENAME=@UBUNTU_CODENAME@
 HOME_URL="https://carinaos.org"
 SUPPORT_URL="https://carinaos.org/support"
 BUG_REPORT_URL="https://carinaos.org/bugs"

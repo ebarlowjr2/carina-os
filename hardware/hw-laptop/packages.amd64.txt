@@ -1,0 +1,4 @@
+# CARINA hw-laptop pack - amd64 only
+
+# Intel thermal management daemon (disabled on non-Intel CPUs by config.sh)
+thermald

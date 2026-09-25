@@ -23,7 +23,16 @@ systemctl enable xrdp 2>/dev/null || true
 systemctl start xrdp 2>/dev/null || true
 
 echo "Allowing RDP through firewall..."
-ufw allow 3389/tcp 2>/dev/null || true
+# RDP scope follows /etc/carina/firewall.conf (the laptop pack limits it to
+# private networks)
+CARINA_LIB_DIR="${CARINA_LIB_DIR:-/opt/carina/lib}"
+if [[ -f "$CARINA_LIB_DIR/firewall.sh" ]]; then
+    # shellcheck source=lib/firewall.sh
+    source "$CARINA_LIB_DIR/firewall.sh"
+    carina_fw_apply_rdp || true
+else
+    ufw allow 3389/tcp 2>/dev/null || true
+fi
 
 # Configure xrdp to use XFCE by default for all users
 echo "Configuring XFCE as default xrdp session..."

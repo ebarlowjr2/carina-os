@@ -1,0 +1,12 @@
+[Unit]
+Description=CARINA OS Hardware Detection
+After=local-fs.target systemd-udev-trigger.service
+Before=carina-firstboot.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/carina device detect --quiet
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

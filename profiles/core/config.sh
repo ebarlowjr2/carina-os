@@ -16,15 +16,26 @@ systemctl enable chrony 2>/dev/null || true
 systemctl start chrony 2>/dev/null || true
 
 echo "Configuring UFW firewall..."
-# Only reset and reconfigure if not already active with correct rules
+CARINA_LIB_DIR="${CARINA_LIB_DIR:-/opt/carina/lib}"
+# Only set defaults and enable if not already active
 # Avoids dropping connections during re-bootstrap
+ufw_active=0
 if ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw_active=1
     echo "  UFW already active, verifying SSH rule..."
-    ufw allow ssh 2>/dev/null || true
 else
     ufw default deny incoming
     ufw default allow outgoing
-    ufw allow ssh
+fi
+# SSH rule follows /etc/carina/firewall.conf (the laptop pack rate-limits it)
+if [[ -f "$CARINA_LIB_DIR/firewall.sh" ]]; then
+    # shellcheck source=lib/firewall.sh
+    source "$CARINA_LIB_DIR/firewall.sh"
+    carina_fw_apply_ssh
+else
+    ufw allow ssh 2>/dev/null || true
+fi
+if [[ $ufw_active -eq 0 ]]; then
     ufw --force enable
 fi
 

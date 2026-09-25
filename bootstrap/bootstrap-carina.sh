@@ -9,9 +9,13 @@
 set -e
 
 LOGFILE="/var/log/carina-bootstrap.log"
-CARINA_VERSION="0.3"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
+CARINA_VERSION="$(cat "$REPO_DIR/VERSION" 2>/dev/null || echo "0.4.0")"
+
+# The pristine Ubuntu identity. /etc/os-release is diverted to CARINA's
+# own file; this one stays owned by base-files and tracks Ubuntu updates.
+UBUNTU_OS_RELEASE="/usr/lib/os-release"
 
 log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
@@ -21,6 +25,15 @@ log() {
 error() {
     log "ERROR: $1"
     exit 1
+}
+
+# Print one field of an os-release file without polluting this shell
+os_release_field() {
+    (
+        # shellcheck disable=SC1090
+        . "$1" 2>/dev/null || exit 0
+        printf '%s\n' "${!2:-}"
+    )
 }
 
 check_root() {
@@ -35,19 +48,27 @@ check_ubuntu() {
         error "Cannot determine OS version"
     fi
     
-    source /etc/os-release
-    if [[ "$ID" != "ubuntu" ]] && [[ "$ID" != "carina" ]]; then
-        error "This script requires Ubuntu (found: $ID)"
+    local current_id
+    current_id=$(os_release_field /etc/os-release ID)
+    if [[ "$current_id" != "ubuntu" ]] && [[ "$current_id" != "carina" ]]; then
+        error "This script requires Ubuntu (found: $current_id)"
     fi
     
-    if [[ "$ID" == "ubuntu" ]]; then
-        local version="${VERSION_ID%%.*}"
-        if [[ "$version" -lt 24 ]]; then
-            error "Ubuntu 24.04 or later required (found: $VERSION_ID)"
-        fi
-        log "Ubuntu $VERSION_ID detected"
-    else
+    if [[ "$current_id" == "carina" ]]; then
         log "CARINA OS already installed, continuing with update..."
+    fi
+    
+    # Version check against the underlying Ubuntu release. On a system
+    # converted by an older bootstrap this file may itself say CARINA;
+    # apply_identity repairs that, so only enforce when it says Ubuntu.
+    local ubuntu_id ubuntu_version
+    ubuntu_id=$(os_release_field "$UBUNTU_OS_RELEASE" ID)
+    if [[ "$ubuntu_id" == "ubuntu" ]]; then
+        ubuntu_version=$(os_release_field "$UBUNTU_OS_RELEASE" VERSION_ID)
+        if [[ "${ubuntu_version%%.*}" -lt 24 ]]; then
+            error "Ubuntu 24.04 or later required (found: $ubuntu_version)"
+        fi
+        log "Ubuntu $ubuntu_version base detected"
     fi
 }
 
@@ -113,6 +134,22 @@ install_cli() {
         log "CLI installed from repo"
     else
         error "CLI not found at $REPO_DIR/cli/carina"
+    fi
+    
+    cp "$REPO_DIR/VERSION" /opt/carina/VERSION
+    
+    # Shared libraries (device detection, package lists, firewall policy)
+    mkdir -p /opt/carina/lib
+    cp "$REPO_DIR/lib/"*.sh /opt/carina/lib/
+    log "CARINA libraries installed"
+    
+    # Hardware packs (replace wholesale so removed packs don't linger)
+    rm -rf /opt/carina/hardware
+    mkdir -p /opt/carina/hardware
+    if [[ -d "$REPO_DIR/hardware" ]]; then
+        cp -r "$REPO_DIR/hardware/"* /opt/carina/hardware/
+        chmod +x /opt/carina/hardware/*/config.sh 2>/dev/null || true
+        log "Hardware packs installed"
     fi
     
     mkdir -p /opt/carina/profiles
@@ -269,11 +306,41 @@ LOGROTATE
 apply_identity() {
     log "Applying CARINA identity..."
     
-    if [[ -f "$REPO_DIR/branding/os-release" ]]; then
-        cp /etc/os-release /etc/os-release.ubuntu.bak 2>/dev/null || true
-        cp "$REPO_DIR/branding/os-release" /etc/os-release
-        log "os-release updated"
+    repair_ubuntu_os_release
+    
+    local ubuntu_version ubuntu_codename
+    ubuntu_version=$(os_release_field "$UBUNTU_OS_RELEASE" VERSION_ID)
+    ubuntu_codename=$(os_release_field "$UBUNTU_OS_RELEASE" UBUNTU_CODENAME)
+    [[ -n "$ubuntu_codename" ]] || ubuntu_codename=$(os_release_field "$UBUNTU_OS_RELEASE" VERSION_CODENAME)
+    if [[ -z "$ubuntu_codename" ]]; then
+        error "Cannot determine Ubuntu codename from $UBUNTU_OS_RELEASE"
     fi
+    
+    # Keep ID_LIKE and the codenames so tooling that keys off them (ROS,
+    # Docker and NodeSource apt setup, ubuntu-drivers, PPAs) still works
+    local tmp
+    tmp=$(mktemp /etc/.os-release.XXXXXX)
+    sed -e "s/@CARINA_VERSION@/${CARINA_VERSION}/g" \
+        -e "s/@UBUNTU_VERSION_ID@/${ubuntu_version}/g" \
+        -e "s/@UBUNTU_CODENAME@/${ubuntu_codename}/g" \
+        "$REPO_DIR/branding/os-release" > "$tmp"
+    chmod 644 "$tmp"
+    
+    # /etc/os-release is a base-files symlink to /usr/lib/os-release.
+    # Divert it so package upgrades write Ubuntu's version to
+    # /etc/os-release.ubuntu and leave CARINA's file alone. Writing through
+    # the symlink (as older bootstraps did) replaced Ubuntu's identity and
+    # was silently reverted by every base-files update.
+    if ! dpkg-divert --list /etc/os-release | grep -q "/etc/os-release.ubuntu"; then
+        dpkg-divert --local --no-rename --divert /etc/os-release.ubuntu --add /etc/os-release >/dev/null
+        log "Diverted /etc/os-release (Ubuntu copy kept at /etc/os-release.ubuntu)"
+    fi
+    if [[ ! -e /etc/os-release.ubuntu ]]; then
+        ln -s ../usr/lib/os-release /etc/os-release.ubuntu
+    fi
+    # Atomic replace: /etc/os-release is never missing
+    mv "$tmp" /etc/os-release
+    log "os-release updated (CARINA $CARINA_VERSION on Ubuntu $ubuntu_version $ubuntu_codename)"
     
     if [[ -f "$REPO_DIR/branding/motd" ]]; then
         cp "$REPO_DIR/branding/motd" /etc/motd
@@ -287,6 +354,25 @@ apply_identity() {
     chmod -x /etc/update-motd.d/* 2>/dev/null || true
     
     log "Ubuntu branding removed"
+}
+
+# Older bootstraps copied CARINA's os-release through the /etc/os-release
+# symlink, overwriting /usr/lib/os-release. Put Ubuntu's back.
+repair_ubuntu_os_release() {
+    if [[ "$(os_release_field "$UBUNTU_OS_RELEASE" ID)" == "ubuntu" ]]; then
+        return 0
+    fi
+    log "Restoring Ubuntu identity in $UBUNTU_OS_RELEASE (overwritten by an older bootstrap)..."
+    if [[ -f /etc/os-release.ubuntu.bak ]] && [[ "$(os_release_field /etc/os-release.ubuntu.bak ID)" == "ubuntu" ]]; then
+        cp /etc/os-release.ubuntu.bak "$UBUNTU_OS_RELEASE"
+    else
+        apt-get install -y -qq --reinstall base-files >/dev/null
+    fi
+    if [[ "$(os_release_field "$UBUNTU_OS_RELEASE" ID)" != "ubuntu" ]]; then
+        error "Could not restore $UBUNTU_OS_RELEASE (try: sudo apt-get install --reinstall base-files)"
+    fi
+    rm -f /etc/os-release.ubuntu.bak
+    log "Ubuntu identity restored"
 }
 
 setup_gnome_branding() {
@@ -396,6 +482,14 @@ setup_firstboot() {
         log "Firstboot script installed"
     fi
     
+    # Hardware detection refreshes /etc/carina/device.conf on every boot
+    if [[ -f "$REPO_DIR/system/carina-detect.service" ]]; then
+        cp "$REPO_DIR/system/carina-detect.service" /etc/systemd/system/carina-detect.service
+        systemctl daemon-reload
+        systemctl enable carina-detect.service 2>/dev/null || true
+        log "Hardware detection service enabled"
+    fi
+    
     if [[ ! -f /etc/carina/firstboot.done ]]; then
         systemctl daemon-reload
         systemctl enable carina-firstboot.service 2>/dev/null || true
@@ -424,6 +518,23 @@ apply_core_profile() {
     fi
 }
 
+apply_hardware_packs() {
+    log "Detecting hardware..."
+    carina device detect --quiet || log "WARN: Hardware detection failed"
+    
+    if [[ "${CARINA_SKIP_HW:-0}" == "1" ]]; then
+        log "CARINA_SKIP_HW=1, not applying hardware packs"
+        return 0
+    fi
+    
+    # Apply every pack that matches this machine (e.g. hw-laptop)
+    if carina device apply; then
+        log "Hardware packs applied"
+    else
+        log "WARN: Hardware pack apply failed; re-run with: sudo carina device apply"
+    fi
+}
+
 main() {
     echo "========================================"
     echo "  CARINA OS Bootstrap"
@@ -445,6 +556,7 @@ main() {
     setup_gnome_branding
     setup_firstboot
     apply_core_profile
+    apply_hardware_packs
     
     log "========================================"
     log "CARINA OS bootstrap complete!"
@@ -457,4 +569,7 @@ main() {
     echo "Bootstrap complete. Please log out and back in to see CARINA branding."
 }
 
-main "$@"
+# Allow tests to source this file for its functions
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

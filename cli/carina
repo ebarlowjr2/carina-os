@@ -6,7 +6,19 @@
 
 set -e
 
-CARINA_VERSION="0.3"
+# Resolve CARINA_HOME: the repo checkout when run as ./cli/carina,
+# otherwise the installed tree in /opt/carina
+_carina_self="$(readlink -f "${BASH_SOURCE[0]}")"
+_carina_repo="$(cd "$(dirname "$_carina_self")/.." && pwd)"
+if [[ -f "$_carina_repo/lib/device.sh" ]]; then
+    CARINA_HOME="${CARINA_HOME:-$_carina_repo}"
+else
+    CARINA_HOME="${CARINA_HOME:-/opt/carina}"
+fi
+CARINA_LIB_DIR="$CARINA_HOME/lib"
+CARINA_HW_DIR="${CARINA_HW_DIR:-$CARINA_HOME/hardware}"
+
+CARINA_VERSION="$(cat "$CARINA_HOME/VERSION" 2>/dev/null || echo "0.4.0")"
 PROFILES_DIR="/opt/carina/profiles"
 CONFIG_DIR="/etc/carina"
 SANDBOX_DIR="/opt/carina/sandbox"
@@ -31,6 +43,28 @@ print_warn() {
 
 print_fail() {
     echo -e "[${CARINA_MAGENTA}FAIL${NC}] $1"
+}
+
+for _carina_lib in device packages hardware; do
+    if [[ -f "$CARINA_LIB_DIR/$_carina_lib.sh" ]]; then
+        # shellcheck disable=SC1090
+        source "$CARINA_LIB_DIR/$_carina_lib.sh"
+    fi
+done
+
+require_root() {
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: This command requires root privileges (use sudo)"
+        return 1
+    fi
+}
+
+require_device_lib() {
+    if ! declare -F device_collect >/dev/null; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Device support not installed ($CARINA_LIB_DIR/device.sh missing)"
+        echo "Re-run the bootstrap script to install it."
+        return 1
+    fi
 }
 
 cmd_version() {
@@ -77,15 +111,23 @@ cmd_doctor() {
         print_fail "Memory: ${mem_percent}% used (critical)"
     fi
     
-    if ping -c 1 -W 2 8.8.8.8 &>/dev/null; then
+    # HTTP check instead of ICMP: works on networks that block ping and
+    # recognises captive portals (hotel/cafe Wi-Fi). Offline is a warning,
+    # not a failure, since field machines are often off-network.
+    local http_code
+    http_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+        http://connectivity-check.ubuntu.com/ 2>/dev/null || true)
+    if [[ "$http_code" == "204" ]]; then
         print_pass "Network: Connected"
+    elif [[ -n "$http_code" ]] && [[ "$http_code" != "000" ]]; then
+        print_warn "Network: Behind a captive portal or proxy (HTTP $http_code)"
     else
-        print_fail "Network: No connectivity"
+        print_warn "Network: Offline"
     fi
     
-    if systemctl is-system-running &>/dev/null; then
+    if command -v systemctl &>/dev/null; then
         local state
-        state=$(systemctl is-system-running 2>/dev/null || echo "unknown")
+        state=$(systemctl is-system-running 2>/dev/null || true)
         if [[ "$state" == "running" ]] || [[ "$state" == "degraded" ]]; then
             print_pass "Systemd: $state"
         else
@@ -107,8 +149,82 @@ cmd_doctor() {
         print_warn "Container Runtime: Not installed (required for sandbox)"
     fi
     
+    if declare -F device_load >/dev/null; then
+        doctor_device_checks
+    fi
+    
     echo ""
     echo "Doctor check complete."
+}
+
+# Hardware-aware checks: only test what this device actually has
+doctor_device_checks() {
+    device_load
+    
+    echo ""
+    echo -e "${CARINA_TEXT}Device:${NC}"
+    local desc="$CHASSIS, $ARCH"
+    [[ "$VIRT_TYPE" != "none" ]] && desc="$desc, $VIRT $VIRT_TYPE"
+    [[ "$CLOUD" != "none" ]] && desc="$desc, $CLOUD"
+    [[ -n "$BOARD_MODEL" ]] && desc="$desc, $BOARD_MODEL"
+    print_pass "Hardware: $desc"
+    
+    if [[ "$HAS_BATTERY" == "1" ]]; then
+        local info capacity status
+        if info=$(device_battery_info); then
+            capacity="${info%%|*}"
+            status="${info##*|}"
+            if [[ "$capacity" =~ ^[0-9]+$ ]] && [[ $capacity -lt 15 ]] && [[ "$status" == "Discharging" ]]; then
+                print_warn "Battery: ${capacity}% ($status)"
+            else
+                print_pass "Battery: ${capacity}% ($status)"
+            fi
+        else
+            print_warn "Battery: detected earlier but not present now"
+        fi
+    fi
+    
+    if [[ "$HAS_BATTERY" == "1" ]] && command -v powerprofilesctl &>/dev/null; then
+        local profile
+        profile=$(powerprofilesctl get 2>/dev/null || true)
+        if [[ -n "$profile" ]]; then
+            print_pass "Power profile: $profile"
+        else
+            print_warn "Power profile: power-profiles-daemon not running"
+        fi
+    fi
+    
+    if [[ "$HAS_WIFI" == "1" ]]; then
+        if command -v nmcli &>/dev/null && [[ "$(nmcli -t -f RUNNING general 2>/dev/null)" == "running" ]]; then
+            local ssid
+            ssid=$(nmcli -t -f ACTIVE,SSID device wifi 2>/dev/null | awk -F: '$1=="yes"{print $2; exit}')
+            if [[ -n "$ssid" ]]; then
+                print_pass "Wi-Fi: Connected to $ssid"
+            else
+                print_warn "Wi-Fi: Not connected (nmcli device wifi connect <SSID> --ask)"
+            fi
+        else
+            print_warn "Wi-Fi: Adapter present but NetworkManager not running"
+        fi
+    fi
+    
+    if [[ "$IS_SBC" == "1" ]]; then
+        if compgen -G "/dev/gpiochip*" >/dev/null; then
+            print_pass "GPIO: Available"
+        else
+            print_warn "GPIO: No gpiochip devices found"
+        fi
+    fi
+    
+    local pack missing=()
+    while IFS= read -r pack; do
+        hw_pack_is_applied "$pack" || missing+=("$pack")
+    done < <(hw_matching_packs)
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        print_warn "Hardware packs not applied: ${missing[*]} (run: sudo carina device apply)"
+    else
+        print_pass "Hardware packs: up to date"
+    fi
 }
 
 cmd_profile_list() {
@@ -170,45 +286,13 @@ cmd_profile_apply() {
     echo -e "Applying profile: ${CARINA_CYAN}$profile_name${NC}"
     echo -e "${CARINA_MUTED}================================${NC}"
     
-    if [[ -f "$profile_dir/packages.txt" ]]; then
-        echo "Installing packages..."
-        # Collect all packages into a single list for batch installation
-        local packages=()
-        while IFS= read -r package || [[ -n "$package" ]]; do
-            package=$(echo "$package" | tr -d '[:space:]')
-            if [[ -n "$package" ]] && [[ ! "$package" =~ ^# ]]; then
-                packages+=("$package")
-            fi
-        done < "$profile_dir/packages.txt"
-        
-        if [[ ${#packages[@]} -gt 0 ]]; then
-            # Filter out already-installed packages to skip unnecessary work
-            local to_install=()
-            for pkg in "${packages[@]}"; do
-                if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
-                    to_install+=("$pkg")
-                fi
-            done
-            
-            if [[ ${#to_install[@]} -gt 0 ]]; then
-                echo "  Installing ${#to_install[@]} packages (${#packages[@]} total, $((${#packages[@]} - ${#to_install[@]})) already installed)..."
-                apt-get update -qq
-                if ! apt-get install -y -qq "${to_install[@]}" 2>/dev/null; then
-                    echo "  Batch install failed, falling back to individual packages..."
-                    for pkg in "${to_install[@]}"; do
-                        apt-get install -y -qq "$pkg" || echo "  Warning: Failed to install $pkg"
-                    done
-                fi
-            else
-                echo "  All ${#packages[@]} packages already installed, skipping."
-            fi
-        fi
-        echo "Packages installed."
-    fi
+    local arch
+    arch=$(dpkg --print-architecture 2>/dev/null || true)
+    carina_install_packages_from_dir "$profile_dir" "$arch"
     
     if [[ -f "$profile_dir/config.sh" ]]; then
         echo "Running configuration..."
-        bash "$profile_dir/config.sh"
+        CARINA_LIB_DIR="$CARINA_LIB_DIR" bash "$profile_dir/config.sh"
         echo "Configuration complete."
     fi
     
@@ -219,10 +303,7 @@ cmd_profile_apply() {
 cmd_gui_enable() {
     echo "Enabling GUI..."
     
-    if [[ $EUID -ne 0 ]]; then
-        echo -e "${CARINA_MAGENTA}ERROR${NC}: This command requires root privileges (use sudo)"
-        return 1
-    fi
+    require_root || return 1
     
     if [[ -d "$PROFILES_DIR/flightdeck" ]]; then
         cmd_profile_apply flightdeck
@@ -246,10 +327,7 @@ cmd_gui_enable() {
 cmd_gui_disable() {
     echo "Disabling GUI..."
     
-    if [[ $EUID -ne 0 ]]; then
-        echo -e "${CARINA_MAGENTA}ERROR${NC}: This command requires root privileges (use sudo)"
-        return 1
-    fi
+    require_root || return 1
     
     echo "Setting multi-user target..."
     systemctl set-default multi-user.target
@@ -1246,6 +1324,213 @@ cmd_control_help() {
 }
 
 # ============================================================================
+# DEVICE COMMANDS (hardware detection and hardware packs)
+# ============================================================================
+
+cmd_device_show() {
+    require_device_lib || return 1
+    device_load
+    
+    echo -e "${CARINA_CYAN}CARINA Device${NC}"
+    echo -e "${CARINA_MUTED}=============${NC}"
+    echo ""
+    local key value mark
+    for key in "${DEVICE_KEYS[@]}"; do
+        value="${!key}"
+        [[ -z "$value" ]] && value="-"
+        mark=""
+        if [[ " $DEVICE_OVERRIDES " == *" $key "* ]]; then
+            mark=" ${CARINA_MAGENTA}(override)${NC}"
+        fi
+        printf "  %-16s %b%b\n" "$key" "${CARINA_TEXT}${value}${NC}" "$mark"
+    done
+    echo ""
+    if [[ "$DEVICE_SOURCE" == "live" ]]; then
+        echo -e "${CARINA_MUTED}Detected live (not saved). Run 'sudo carina device detect' to save.${NC}"
+    else
+        echo -e "${CARINA_MUTED}From $DEVICE_SOURCE (detected ${DETECTED_AT:-unknown})${NC}"
+    fi
+}
+
+cmd_device_detect() {
+    require_device_lib || return 1
+    local quiet=0
+    [[ "${1:-}" == "--quiet" ]] && quiet=1
+    
+    device_collect
+    device_apply_overrides
+    
+    if [[ $EUID -eq 0 ]]; then
+        device_write_conf
+        [[ $quiet -eq 1 ]] && return 0
+        cmd_device_show
+    else
+        [[ $quiet -eq 1 ]] && return 0
+        device_render_conf
+        echo ""
+        echo -e "${CARINA_MUTED}Not saved (run with sudo to write $CARINA_DEVICE_CONF)${NC}"
+    fi
+}
+
+cmd_device_set() {
+    require_device_lib || return 1
+    local key="${1:-}" value="${2:-}"
+    
+    if [[ -z "$key" ]] || [[ -z "$value" ]]; then
+        echo "Usage: carina device set <KEY> <value>"
+        echo "Overridable keys: ${DEVICE_OVERRIDABLE_KEYS[*]}"
+        echo "Example: sudo carina device set CHASSIS laptop"
+        return 1
+    fi
+    if ! _dev_is_overridable "$key"; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: '$key' cannot be overridden"
+        echo "Overridable keys: ${DEVICE_OVERRIDABLE_KEYS[*]}"
+        return 1
+    fi
+    if ! _dev_valid_value "$value"; then
+        echo -e "${CARINA_MAGENTA}ERROR${NC}: Invalid value '$value' (letters, digits and _.,:+- only)"
+        return 1
+    fi
+    require_root || return 1
+    
+    device_set_override "$key" "$value"
+    cmd_device_detect --quiet
+    echo -e "Override set: ${CARINA_CYAN}$key=$value${NC}"
+    echo "Run 'sudo carina device apply' to apply any newly matching hardware packs."
+}
+
+cmd_device_unset() {
+    require_device_lib || return 1
+    local key="${1:-}"
+    if [[ -z "$key" ]]; then
+        echo "Usage: carina device unset <KEY>"
+        return 1
+    fi
+    require_root || return 1
+    
+    device_set_override "$key" ""
+    cmd_device_detect --quiet
+    echo -e "Override cleared: ${CARINA_CYAN}$key${NC}"
+}
+
+cmd_device_packs() {
+    require_device_lib || return 1
+    device_load
+    
+    echo -e "${CARINA_CYAN}CARINA Hardware Packs${NC}"
+    echo -e "${CARINA_MUTED}=====================${NC}"
+    echo ""
+    
+    local name found=0 match applied
+    while IFS= read -r name; do
+        found=1
+        if hw_pack_matches "$name"; then
+            match="${CARINA_CYAN}matches${NC}"
+        else
+            match="${CARINA_MUTED}no match${NC}"
+        fi
+        if hw_pack_is_applied "$name"; then
+            applied="applied"
+        else
+            applied="not applied"
+        fi
+        echo -e "  ${CARINA_CYAN}$name${NC} [$match, $applied]"
+        echo -e "      ${CARINA_MUTED}$(hw_pack_description "$name")${NC}"
+    done < <(hw_pack_names)
+    
+    if [[ $found -eq 0 ]]; then
+        echo "No hardware packs found in $CARINA_HW_DIR"
+    fi
+}
+
+cmd_device_apply() {
+    require_device_lib || return 1
+    local dry_run=0 force=0 requested=() name
+    
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run) dry_run=1 ;;
+            --force) force=1 ;;
+            -*)
+                echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown option: $1"
+                return 1
+                ;;
+            *) requested+=("$1") ;;
+        esac
+        shift
+    done
+    
+    [[ $dry_run -eq 1 ]] || require_root || return 1
+    
+    # Always apply against fresh facts
+    device_collect
+    device_apply_overrides
+    [[ $dry_run -eq 1 ]] || device_write_conf
+    
+    local packs=()
+    if [[ ${#requested[@]} -eq 0 ]]; then
+        while IFS= read -r name; do
+            packs+=("$name")
+        done < <(hw_matching_packs)
+    else
+        for name in "${requested[@]}"; do
+            if ! hw_pack_exists "$name"; then
+                echo -e "${CARINA_MAGENTA}ERROR${NC}: Hardware pack '$name' not found"
+                return 1
+            fi
+            if ! hw_pack_matches "$name" && [[ $force -eq 0 ]]; then
+                echo -e "${CARINA_MAGENTA}ERROR${NC}: '$name' does not match this device ($CHASSIS, $ARCH, virt=$VIRT_TYPE)"
+                echo "Use --force to apply anyway, or override detection with 'carina device set'."
+                return 1
+            fi
+            packs+=("$name")
+        done
+    fi
+    
+    if [[ ${#packs[@]} -eq 0 ]]; then
+        echo "No hardware packs match this device ($CHASSIS, $ARCH, virt=$VIRT_TYPE)."
+        return 0
+    fi
+    
+    for name in "${packs[@]}"; do
+        if [[ $dry_run -eq 1 ]]; then
+            echo -e "Would apply: ${CARINA_CYAN}$name${NC}"
+            carina_package_list "$CARINA_HW_DIR/$name" "$ARCH" | sed 's/^/  package: /'
+            continue
+        fi
+        echo -e "Applying hardware pack: ${CARINA_CYAN}$name${NC}"
+        echo -e "${CARINA_MUTED}================================${NC}"
+        hw_apply_pack "$name"
+        echo -e "Hardware pack '${CARINA_CYAN}$name${NC}' applied."
+        echo ""
+    done
+}
+
+cmd_device_help() {
+    echo -e "${CARINA_CYAN}CARINA Device${NC} - Hardware detection and hardware packs"
+    echo ""
+    echo -e "${CARINA_TEXT}Usage:${NC} carina device <command>"
+    echo ""
+    echo -e "${CARINA_TEXT}Commands:${NC}"
+    echo -e "  ${CARINA_CYAN}show${NC}                 Show detected device facts (default)"
+    echo -e "  ${CARINA_CYAN}detect${NC} [--quiet]     Re-detect hardware and save facts"
+    echo -e "  ${CARINA_CYAN}set${NC} <KEY> <value>    Override a detected fact"
+    echo -e "  ${CARINA_CYAN}unset${NC} <KEY>          Remove an override"
+    echo -e "  ${CARINA_CYAN}packs${NC}                List hardware packs and whether they match"
+    echo -e "  ${CARINA_CYAN}apply${NC} [pack...]      Apply matching packs (or the named ones)"
+    echo ""
+    echo -e "${CARINA_TEXT}Options for 'apply':${NC}"
+    echo "  --dry-run           Show what would be applied"
+    echo "  --force             Apply a named pack even if it doesn't match"
+    echo ""
+    echo -e "${CARINA_TEXT}Examples:${NC}"
+    echo "  carina device"
+    echo "  sudo carina device apply --dry-run"
+    echo "  sudo carina device set CHASSIS laptop"
+    echo ""
+}
+
+# ============================================================================
 # HELP
 # ============================================================================
 
@@ -1256,6 +1541,7 @@ cmd_help() {
     echo ""
     echo -e "${CARINA_TEXT}Commands:${NC}"
     echo -e "  ${CARINA_CYAN}doctor${NC}              Check system health"
+    echo -e "  ${CARINA_CYAN}device${NC} <cmd>        Hardware detection and hardware packs"
     echo -e "  ${CARINA_CYAN}profile${NC} <cmd>       Manage system profiles"
     echo -e "  ${CARINA_CYAN}gui${NC} <cmd>           Enable/disable graphical interface"
     echo -e "  ${CARINA_CYAN}sandbox${NC} <cmd>       Manage sandbox environments"
@@ -1271,6 +1557,13 @@ cmd_help() {
     echo -e "${CARINA_TEXT}GUI commands:${NC}"
     echo "  gui enable          Enable graphical interface"
     echo "  gui disable         Disable graphical interface"
+    echo ""
+    echo -e "${CARINA_TEXT}Device commands:${NC}"
+    echo "  device              Show detected hardware"
+    echo "  device detect       Re-detect and save hardware facts"
+    echo "  device packs        List hardware packs"
+    echo "  device apply        Apply matching hardware packs"
+    echo "  device set <k> <v>  Override a detected fact"
     echo ""
     echo -e "${CARINA_TEXT}Sandbox commands:${NC}"
     echo "  sandbox templates   List sandbox templates"
@@ -1300,6 +1593,41 @@ main() {
     case "$cmd" in
         doctor)
             cmd_doctor
+            ;;
+        detect)
+            cmd_device_detect "$@"
+            ;;
+        device)
+            local subcmd="${1:-show}"
+            shift || true
+            case "$subcmd" in
+                show)
+                    cmd_device_show
+                    ;;
+                detect)
+                    cmd_device_detect "$@"
+                    ;;
+                set)
+                    cmd_device_set "$@"
+                    ;;
+                unset)
+                    cmd_device_unset "$@"
+                    ;;
+                packs)
+                    cmd_device_packs
+                    ;;
+                apply)
+                    cmd_device_apply "$@"
+                    ;;
+                help|--help|-h)
+                    cmd_device_help
+                    ;;
+                *)
+                    echo -e "${CARINA_MAGENTA}ERROR${NC}: Unknown device command: $subcmd"
+                    cmd_device_help
+                    exit 1
+                    ;;
+            esac
             ;;
         profile)
             local subcmd="${1:-list}"

@@ -1,0 +1,21 @@
+# CARINA hw-laptop pack - all architectures
+
+# Networking: NetworkManager takes over from networkd so Wi-Fi roams
+network-manager
+wpasupplicant
+iw
+rfkill
+wireless-regdb
+linux-firmware
+
+# Power and battery
+power-profiles-daemon
+upower
+acpi
+brightnessctl
+
+# Firmware updates (BIOS, docks, SSDs via LVFS)
+fwupd
+
+# Bluetooth
+bluez

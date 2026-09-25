@@ -47,6 +47,7 @@ The bootstrap script:
 4. Applies CARINA identity (`/etc/os-release`, `/etc/motd`)
 5. Enables the first-boot system
 6. Applies the Core profile
+7. Detects the hardware and applies matching hardware packs (for example `hw-laptop`)
 
 ## Verify Installation
 
@@ -66,19 +67,31 @@ carina profile list        # List available profiles
 carina profile apply core  # Apply or reapply the core profile
 ```
 
+## Installing on a Laptop
+
+On a laptop, the bootstrap applies the `hw-laptop` hardware pack automatically. It adds NetworkManager for Wi-Fi, power management, lid/suspend settings, firmware updates and a roaming-safe firewall.
+
+1. Install Ubuntu Server 24.04. Use Ethernet or USB tethering during install if the installer doesn't detect your Wi-Fi.
+2. Run the bootstrap as above.
+3. Reboot so NetworkManager takes over networking.
+4. Connect to Wi-Fi: `nmcli device wifi connect <SSID> --ask`
+5. Check the laptop section of `carina doctor`.
+
+Lid behaviour and firewall policy are set in `/etc/carina/laptop.conf` and `/etc/carina/firewall.conf`. See [Hardware Detection](../hardware.md).
+
 ## Enable GUI (Optional)
 
 If you need a graphical interface:
 
 ```bash
-carina gui enable    # Install and enable FlightDeck (XFCE + xRDP)
-sudo reboot          # Reboot to activate display manager
+sudo carina gui enable    # Install and enable FlightDeck (XFCE + xRDP)
+sudo reboot               # Reboot to activate display manager
 ```
 
 To disable the GUI later:
 
 ```bash
-carina gui disable
+sudo carina gui disable
 sudo reboot
 ```
 

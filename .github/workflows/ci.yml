@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck (new modules, strict)
+        run: shellcheck -x lib/*.sh hardware/*/*.sh profiles/*/config.sh tests/*.sh -e SC2034
+
+      - name: ShellCheck (CLI and bootstrap, errors only)
+        run: shellcheck -x -S error cli/carina bootstrap/bootstrap-carina.sh
+
+      - name: Device detection tests
+        run: bash tests/test-device.sh
+
+      - name: CLI smoke test
+        run: |
+          ./cli/carina version
+          CARINA_DEVICE_CONF=/tmp/none.conf ./cli/carina device
+          CARINA_DEVICE_CONF=/tmp/none.conf ./cli/carina device packs
+          CARINA_DEVICE_CONF=/tmp/none.conf ./cli/carina device apply --dry-run

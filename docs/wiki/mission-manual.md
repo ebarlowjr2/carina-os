@@ -33,12 +33,17 @@ carina version
 
 | Command | Description |
 |---------|-------------|
-| `carina doctor` | Run system health checks |
+| `carina doctor` | Run system health checks (hardware-aware) |
+| `carina device` | Show detected hardware traits |
+| `carina device detect` | Re-detect hardware and save facts |
+| `carina device packs` | List hardware packs and whether they match |
+| `carina device apply [pack]` | Apply matching (or named) hardware packs |
+| `carina device set <KEY> <value>` | Override a detected trait |
 | `carina version` | Display current CARINA version |
 | `carina profile list` | List available profiles |
 | `carina profile apply <name>` | Apply a system profile |
-| `carina gui enable` | Enable graphical interface (FlightDeck) |
-| `carina gui disable` | Disable graphical interface |
+| `sudo carina gui enable` | Enable graphical interface (FlightDeck) |
+| `sudo carina gui disable` | Disable graphical interface |
 | `carina sandbox templates` | List sandbox templates |
 | `carina sandbox up <template>` | Start a sandbox environment |
 | `carina sandbox list` | Show active sandboxes |
