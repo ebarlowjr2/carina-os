@@ -303,6 +303,39 @@ LOGROTATE
     fi
 }
 
+# Fill a branding template's @PLACEHOLDERS@ into a temp file in /etc and
+# print its path
+render_branding() {
+    local template="$1" ubuntu_version="$2" ubuntu_codename="$3" tmp
+    tmp=$(mktemp /etc/.carina-branding.XXXXXX)
+    sed -e "s/@CARINA_VERSION@/${CARINA_VERSION}/g" \
+        -e "s/@UBUNTU_VERSION_ID@/${ubuntu_version}/g" \
+        -e "s/@UBUNTU_CODENAME@/${ubuntu_codename}/g" \
+        "$template" > "$tmp"
+    chmod 644 "$tmp"
+    echo "$tmp"
+}
+
+# Replace a base-files owned file with CARINA's version. The package's copy
+# is diverted to <file>.ubuntu, so Ubuntu upgrades update that copy and
+# leave CARINA's file alone. Writing over these files directly (as older
+# bootstraps did with /etc/os-release, writing through its symlink into
+# /usr/lib/os-release) gets reverted by every base-files update.
+install_diverted() {
+    local target="$1" new_file="$2"
+    if ! dpkg-divert --list "$target" | grep -q "${target}.ubuntu"; then
+        # Keep Ubuntu's file (or symlink) alongside before diverting, so the
+        # target is never missing (--no-rename leaves it in place)
+        if [[ -e "$target" || -L "$target" ]] && [[ ! -e "${target}.ubuntu" && ! -L "${target}.ubuntu" ]]; then
+            cp -P -p "$target" "${target}.ubuntu"
+        fi
+        dpkg-divert --local --no-rename --divert "${target}.ubuntu" --add "$target" >/dev/null
+        log "Diverted $target (Ubuntu copy kept at ${target}.ubuntu)"
+    fi
+    # Atomic replace
+    mv "$new_file" "$target"
+}
+
 apply_identity() {
     log "Applying CARINA identity..."
     
@@ -319,28 +352,19 @@ apply_identity() {
     # Keep ID_LIKE and the codenames so tooling that keys off them (ROS,
     # Docker and NodeSource apt setup, ubuntu-drivers, PPAs) still works
     local tmp
-    tmp=$(mktemp /etc/.os-release.XXXXXX)
-    sed -e "s/@CARINA_VERSION@/${CARINA_VERSION}/g" \
-        -e "s/@UBUNTU_VERSION_ID@/${ubuntu_version}/g" \
-        -e "s/@UBUNTU_CODENAME@/${ubuntu_codename}/g" \
-        "$REPO_DIR/branding/os-release" > "$tmp"
-    chmod 644 "$tmp"
-    
-    # /etc/os-release is a base-files symlink to /usr/lib/os-release.
-    # Divert it so package upgrades write Ubuntu's version to
-    # /etc/os-release.ubuntu and leave CARINA's file alone. Writing through
-    # the symlink (as older bootstraps did) replaced Ubuntu's identity and
-    # was silently reverted by every base-files update.
-    if ! dpkg-divert --list /etc/os-release | grep -q "/etc/os-release.ubuntu"; then
-        dpkg-divert --local --no-rename --divert /etc/os-release.ubuntu --add /etc/os-release >/dev/null
-        log "Diverted /etc/os-release (Ubuntu copy kept at /etc/os-release.ubuntu)"
-    fi
-    if [[ ! -e /etc/os-release.ubuntu ]]; then
-        ln -s ../usr/lib/os-release /etc/os-release.ubuntu
-    fi
-    # Atomic replace: /etc/os-release is never missing
-    mv "$tmp" /etc/os-release
+    tmp=$(render_branding "$REPO_DIR/branding/os-release" "$ubuntu_version" "$ubuntu_codename")
+    install_diverted /etc/os-release "$tmp"
     log "os-release updated (CARINA $CARINA_VERSION on Ubuntu $ubuntu_version $ubuntu_codename)"
+    
+    # Console login banner (/etc/issue) and network login banner
+    local issue
+    for issue in issue issue.net; do
+        if [[ -f "$REPO_DIR/branding/$issue" ]]; then
+            tmp=$(render_branding "$REPO_DIR/branding/$issue" "$ubuntu_version" "$ubuntu_codename")
+            install_diverted "/etc/$issue" "$tmp"
+        fi
+    done
+    log "Login banners updated"
     
     if [[ -f "$REPO_DIR/branding/motd" ]]; then
         cp "$REPO_DIR/branding/motd" /etc/motd

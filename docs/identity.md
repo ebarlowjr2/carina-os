@@ -34,6 +34,22 @@ On Ubuntu, `/etc/os-release` is a symlink owned by the `base-files` package, poi
 
 Bootstraps before 0.4 copied CARINA's file through the symlink and overwrote `/usr/lib/os-release`, and every `base-files` update reverted the branding. Re-running the bootstrap detects this and restores Ubuntu's file, from the old backup if it is intact or by reinstalling `base-files`.
 
+## Login Banners
+
+`/etc/issue` is the text shown above the console login prompt, and `/etc/issue.net` is the network login banner. Both are generated from `branding/issue` and `branding/issue.net`:
+
+```
+CARINA OS 0.4.0 (Core) \n \l
+```
+
+Like os-release, they are diverted with `dpkg-divert`. Ubuntu's versions are kept at `/etc/issue.ubuntu` and `/etc/issue.net.ubuntu`, and `base-files` updates go there.
+
+### Still branded Ubuntu
+
+- **GRUB boot menu:** entries still say "Ubuntu". The menu title comes from `GRUB_DISTRIBUTOR`, which `grub-install` also uses as the EFI boot loader directory. Changing it can break booting with Ubuntu's signed boot loader, so CARINA leaves it alone. On a single-OS install the menu is hidden by default.
+- **`lsb_release` / `/etc/lsb-release`:** still report Ubuntu, so `add-apt-repository` and PPAs keep working.
+- **`/etc/legal`:** Ubuntu's licensing notice, shown once on first login, is left as is.
+
 ## Message of the Day (MOTD)
 
 The /etc/motd file displays when users log in. CARINA uses a minimal, professional message:
