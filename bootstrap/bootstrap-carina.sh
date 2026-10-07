@@ -366,6 +366,8 @@ apply_identity() {
     done
     log "Login banners updated"
     
+    setup_apt_templates
+    
     if [[ -f "$REPO_DIR/branding/motd" ]]; then
         cp "$REPO_DIR/branding/motd" /etc/motd
         log "MOTD updated"
@@ -378,6 +380,26 @@ apply_identity() {
     chmod -x /etc/update-motd.d/* 2>/dev/null || true
     
     log "Ubuntu branding removed"
+}
+
+# lsb_release builds its Distributor ID from /etc/os-release ("Carina"),
+# and python-apt (add-apt-repository, software-properties) only accepts
+# sources for a distribution it has a template for, matched by that exact
+# name; it ignores ID_LIKE. Without a Carina template, adding a PPA fails
+# with NoDistroTemplateException. Link CARINA's template to Ubuntu's so it
+# tracks python-apt updates. The template is expanded from a distro-info
+# release list named after the distribution too, so link that to Ubuntu's.
+# The directories are created if python-apt / distro-info-data aren't
+# installed yet; the links resolve once they are.
+setup_apt_templates() {
+    local name="${CARINA_APT_TEMPLATE_NAME:-Carina}"
+    local templates="/usr/share/python-apt/templates"
+    local distro_info="/usr/share/distro-info"
+    mkdir -p "$templates" "$distro_info"
+    ln -sfn Ubuntu.info "$templates/${name}.info"
+    ln -sfn Ubuntu.mirrors "$templates/${name}.mirrors"
+    ln -sfn ubuntu.csv "$distro_info/${name,,}.csv"
+    log "python-apt templates linked ($name -> Ubuntu)"
 }
 
 # Older bootstraps copied CARINA's os-release through the /etc/os-release

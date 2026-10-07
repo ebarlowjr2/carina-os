@@ -47,8 +47,27 @@ Like os-release, they are diverted with `dpkg-divert`. Ubuntu's versions are kep
 ### Still branded Ubuntu
 
 - **GRUB boot menu:** entries still say "Ubuntu". The menu title comes from `GRUB_DISTRIBUTOR`, which `grub-install` also uses as the EFI boot loader directory. Changing it can break booting with Ubuntu's signed boot loader, so CARINA leaves it alone. On a single-OS install the menu is hidden by default.
-- **`lsb_release` / `/etc/lsb-release`:** still report Ubuntu, so `add-apt-repository` and PPAs keep working.
+- **`/etc/lsb-release`:** still says `DISTRIB_ID=Ubuntu`. On Ubuntu 24.04, however, the `lsb_release` command reads `/etc/os-release` first, so `lsb_release -a` reports `Distributor ID: Carina`. See below for what that means for PPAs.
+- **SSH pre-login banner:** `/etc/issue.net` is branded, but sshd only shows it if `Banner /etc/issue.net` is set in its config, which Ubuntu leaves off. CARINA keeps it off, because a pre-authentication banner tells anyone who connects which OS and version is running. The CARINA text you see after logging in over SSH comes from the MOTD.
 - **`/etc/legal`:** Ubuntu's licensing notice, shown once on first login, is left as is.
+
+## PPAs and add-apt-repository
+
+`add-apt-repository` (python-apt) only accepts sources for a distribution it has a template for. It looks the template up by `lsb_release`'s Distributor ID (`Carina`) and ignores `ID_LIKE`. Without one, adding a PPA fails with:
+
+```
+aptsources.distro.NoDistroTemplateException: Error: could not find a distribution template for Carina/noble
+```
+
+The bootstrap installs CARINA's template as symlinks to Ubuntu's, so it follows python-apt and distro-info updates:
+
+| Link | Target |
+|------|--------|
+| `/usr/share/python-apt/templates/Carina.info` | `Ubuntu.info` |
+| `/usr/share/python-apt/templates/Carina.mirrors` | `Ubuntu.mirrors` |
+| `/usr/share/distro-info/carina.csv` | `ubuntu.csv` |
+
+Other Ubuntu derivatives with their own `ID`, such as Pop!_OS and Linux Mint, ship templates the same way. If the bootstrap runs before python-apt is installed, it creates the directories and the links start working once the package arrives.
 
 ## Message of the Day (MOTD)
 
